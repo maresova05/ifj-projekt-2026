@@ -68,6 +68,12 @@ typedef struct {
     int capacity;
 }Stack;
 
+/**
+ * @brief Inicializuje zásobník.
+ * 
+ * @param s Ukazatel na zásobník.
+ * @return false při selhání, true při úspěchu.
+ */
 bool stack_init(Stack *s){
     if(s==NULL){
         return false;
@@ -85,6 +91,13 @@ bool stack_init(Stack *s){
     return true;
 }
 
+/**
+ * @brief Vkládá položku na zásobník.
+ * 
+ * @param s Ukazatel na inicializovaný zásobník
+ * @param item Položka kterou chceme vložit
+ * @return false při selhání, true při úspěchu.
+ */
 bool stack_push(Stack *s, StackItem item){
     if(s ==NULL||s->items==NULL){
         return false;
@@ -108,12 +121,23 @@ bool stack_push(Stack *s, StackItem item){
     return true;
 }
 
+/**
+ * @brief Odebere vrchní položku
+ * 
+ * @param s Ukazatel na inicializovaný zásobník
+ */
 void stack_pop(Stack *s){
     if(s->top >= 0){
         s->top --;
     }
 }
 
+/**
+ * @brief Najde nejvrchnější položku na zásobníku.
+ * 
+ * @param s Ukazatel na inicializovaný zásobník
+ * @return StackItem Nalezenou položku, pokud je prázdný vrací STACK_DOLLAR
+ */
 StackItem stack_top(Stack *s){
     if(s->top>=0){
         StackItem item = s->items[s->top];
@@ -125,7 +149,12 @@ StackItem stack_top(Stack *s){
     }
 }
 
-//vrací první terminál (přeskakuje neterminály)
+/**
+ * @brief Najde nejvrchnější terminál na zásobníku, ignoruje neterminály.
+ * 
+ * @param s Ukazatel na inicializovaný zásobník
+ * @return StackItem První nalezený terminál, pokud je prázdný vrací STACK_DOLLAR
+ */
 StackItem stack_top_terminal(Stack *s){
     if(s->top>=0){
         for(int i=s->top; i>= 0; i--){
@@ -140,7 +169,11 @@ StackItem stack_top_terminal(Stack *s){
     return empty_item;
 }
 
-
+/**
+ * @brief Uvolní zásobník.
+ * 
+ * @param s Ukazatel na inicializovaný zásobník.
+ */
 void stack_free(Stack *s){
     if(s == NULL){
         return;
@@ -155,10 +188,13 @@ void stack_free(Stack *s){
     s->capacity = 0;
 }
 
-/*
-* Algoritmus
-*/
 
+/**
+ * @brief Hlavní funkce pro syntaktickou analýzu výrazu
+ * 
+ * @return ExprResult Vrací EXPR_OK při úspěchu, nebo příslušný chybový kód 
+ *         při selhání
+ */
 ExprResult parse_expression(){
     Stack s;
     stack_init(&s);
@@ -268,7 +304,7 @@ ExprResult parse_expression(){
 
             case X:{
                 StackItem input_item = {(StackSymbol)input};
-                if(top_term == DOLLAR && input_item.type == DOLLAR){
+                if(top_term == DOLLAR && input_item.type == STACK_DOLLAR){
                     success = true;
                 }else{
                     stack_free(&s);
@@ -279,5 +315,6 @@ ExprResult parse_expression(){
                 
         }
     }
-}
 
+    return EXPR_OK;
+}

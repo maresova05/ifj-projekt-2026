@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "expression.h"
+#include "scanner.h"
+#include <inttypes.h>
 
 #define STACK_INIT_CAPACITY 16
 #define STACK_MAX_SIZE 1000
@@ -60,6 +62,7 @@ typedef enum{
 
 typedef struct{
     StackSymbol type;
+    Token token;
 } StackItem;
 
 typedef struct {
@@ -188,6 +191,121 @@ void stack_free(Stack *s){
     s->capacity = 0;
 }
 
+/**
+ * @brief Mapa převodu tokenu na symbol.
+ * 
+ * @param t_tyoe Typ tokenu který převádíme.
+ */
+Symbol map_token_to_symbol(TokenType t_type){
+    switch(t_type){
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return PLUS_MINUS_BIN;
+        case TOKEN_MUL:
+        case TOKEN_DIV:
+            return MUL_DIV;
+        
+
+        case TOKEN_EQ:
+        case TOKEN_NEQ:
+        case TOKEN_LESS:
+        case TOKEN_LESS_EQ:
+        case TOKEN_GREATER:
+        case TOKEN_GREATER_EQ:
+            return RELATIONAL;
+
+        case TOKEN_LPAREN:
+            return L_PAR;
+        case TOKEN_RPAREN:
+            return P_PAR;
+        
+        case TOKEN_IDENTIFIER:
+        case TOKEN_INT_LITERAL:
+        case TOKEN_DOUBLE_LITERAL:
+        case TOKEN_STRING_LITERAL:
+            return ID;
+
+        default:
+            return DOLLAR;
+    }
+}
+
+/**
+ * @brief Funkce pro generování instrukce PUSHS
+ * 
+ * @param token Token který chceme vložit.
+ */
+void gen_push_operand(Token token){
+    switch (token.type){
+        case TOKEN_INT_LITERAL:
+            printf("PUSHS int@%" PRId64 "\n", token.attribute.i_val);
+            break;
+        
+        case TOKEN_DOUBLE_LITERAL:
+            printf("PUSHS float@%g\n", token.attribute.d_val);
+            break;
+        
+        case TOKEN_STRING_LITERAL:
+            printf("PUSHS string@%s\n", token.attribute.s_val);
+            break;
+        
+        case TOKEN_IDENTIFIER:
+            printf("PUSHS LF@%s\n", token.attribute.s_val);
+            break;
+        
+        default:
+            break;
+    }
+}
+
+
+void gen_operator(TokenType op_type){
+    switch(op_type){
+        case TOKEN_PLUS:
+            printf("ADDS\n");
+            break;
+        
+        case TOKEN_MINUS:
+            printf("SUBS\n");
+            break;
+
+        case TOKEN_MUL:
+            printf("MULS\n");
+            break;
+
+        case TOKEN_DIV:
+            printf("DIVS\n");
+            break;
+
+        case TOKEN_EQ:
+            printf("EQS\n");
+            break;
+        
+        case TOKEN_NEQ:
+            printf("NEQS\n");
+            break;
+
+        case TOKEN_LESS:
+            printf("LTS\n");
+            break;
+
+        case TOKEN_GREATER:
+            printf("GTS\n");
+            break;
+        
+        case TOKEN_LESS_EQ:
+            printf("GTS\n");
+            break;
+
+        case TOKEN_GREATER_EQ:
+            printf("LTS\n");
+            break;
+        
+        default:
+            break;
+    }
+}
+
 
 /**
  * @brief Hlavní funkce pro syntaktickou analýzu výrazu
@@ -199,27 +317,47 @@ ExprResult parse_expression(){
     Stack s;
     stack_init(&s);
 
-    StackItem init_item = {STACK_DOLLAR};
+    Token empty_token = {0};
+
+    StackItem init_item = {STACK_DOLLAR, empty_token};
     stack_push(&s, init_item);
 
-    //TODO: získat první token od lexeru (Vojta??)
-    Symbol input = DOLLAR; //zatím na tvrdo
+    Token current_token;
+    get_next_token(&current_token);
+    Symbol input_symbol = map_token_to_symbol(current_token.type);
+
     bool success = false;
 
     while(!success){
         StackItem top_item = stack_top_terminal(&s);
         Symbol top_term = (Symbol)top_item.type;
 
-        Action action = precedence_table[top_term][input];
+        Action action = precedence_table[top_term][input_symbol];
 
         switch(action){
             case S:{
-                StackItem stop_item = {STACK_STOP};
+                StackItem top_item = stack_top(&s);
+                bool has_non_term = false;
+                StackItem non_term_item;
+
+                if(top_item.type == STACK_NON_TERM){
+                    has_non_term = true;
+                    non_term_item = top_item;
+                    stack_pop(&s);
+                }
+
+                StackItem stop_item = {STACK_STOP, empty_token};
                 stack_push(&s, stop_item);
-                StackItem input_item = {(StackSymbol)input};
+
+                if(has_non_term){
+                    stack_push(&s, non_term_item);
+                }
+
+                StackItem input_item = {(StackSymbol)input_symbol, current_token};
                 stack_push(&s, input_item);
 
-                //načtení dalšího tokenu do lexeru
+                get_next_token(&current_token);
+                input_symbol = map_token_to_symbol(current_token.type);
                 break;
             }
             case R:{
@@ -256,7 +394,7 @@ ExprResult parse_expression(){
                 //pravidlo E-> id
                 if(handle_len == 1 && handle[0].type == STACK_ID){
                     rule_matched = true;
-                    //TODO: gen_push_hodnoty(handle[0]);
+                    gen_push_operand(handle[0].token);
                 
                 } //pravidlo E-> E + E (-,*, /, ==, ...)
                 else if(handle_len == 3 && handle[0].type == STACK_NON_TERM &&
@@ -264,7 +402,7 @@ ExprResult parse_expression(){
                         handle[2].type == STACK_NON_TERM){
 
                     rule_matched = true;
-                    //TODO: gen_aritmetika(handle[1].type);
+                    gen_operator(handle[1].token.type);
                 
                 } //pravidlo E -> (E)
                 else if(handle_len == 3 &&
@@ -280,7 +418,8 @@ ExprResult parse_expression(){
                         handle[1].type == STACK_PLUS_MINUS_UN){
                     
                     rule_matched = true;
-                    //TODO: gen_unarni();
+                    printf("PUSHS int@-1\n");
+                    printf("MULS\n");
                 }
 
                 if(!rule_matched){
@@ -288,7 +427,7 @@ ExprResult parse_expression(){
                     return EXPR_ERR_SYNTAX;
                 }
 
-                StackItem non_term = {STACK_NON_TERM};
+                StackItem non_term = {STACK_NON_TERM, empty_token};
                 stack_push(&s, non_term);
 
                 break;
@@ -296,15 +435,16 @@ ExprResult parse_expression(){
             }
 
             case E:{
-                StackItem input_item = {(StackSymbol)input};
+                StackItem input_item = {(StackSymbol)input_symbol, current_token};
                 stack_push(&s, input_item);
-                //načtení dalšího tokenu do lexeru
+
+                get_next_token(&current_token);
+                input_symbol = map_token_to_symbol(current_token.type);
                 break;
             }
 
             case X:{
-                StackItem input_item = {(StackSymbol)input};
-                if(top_term == DOLLAR && input_item.type == STACK_DOLLAR){
+                if(top_term == DOLLAR && input_symbol == DOLLAR){
                     success = true;
                 }else{
                     stack_free(&s);
@@ -318,3 +458,6 @@ ExprResult parse_expression(){
 
     return EXPR_OK;
 }
+
+
+

@@ -15,6 +15,12 @@ typedef enum {
     STATE_IN_NUMBER,
     STATE_IN_DOUBLE,
     STATE_SLASH,
+    STATE_IN_STRING,
+    STATE_IN_STRING_ESCAPE,
+    STATE_IN_MULTILINE_STRING,
+    STATE_MULTILINE_1,
+    STATE_MULTILINE_2,
+
 
 }LexerState;
 
@@ -80,6 +86,26 @@ int get_next_token(Token *token){
                     state = STATE_LESS;
                 }else if (c == '>'){
                     state = STATE_GREATER;
+                }else if (c == '"'){
+                    if (!dstring_init(&word)) return 99;
+
+                    int c2 = getchar();
+                    if (c2 == '"'){
+                        int c3 = getchar();
+                        if (c3 == '"'){
+                            state = STATE_IN_MULTILINE_STRING;
+                        }else{
+                            ungetc(c3, stdin);
+                            token->type = TOKEN_STRING_LITERAL;
+                            token->attribute.s_val = word.str;
+                            return 0;
+                        }
+                    }else{
+                        ungetc(c2, stdin);
+                        state = STATE_IN_STRING;
+                    }
+
+
                 }else if (isdigit(c)){
                     if (!dstring_init(&word)){
                         return 99; //interní chyba
@@ -239,6 +265,88 @@ int get_next_token(Token *token){
                     ungetc(c, stdin);
                     token->type = TOKEN_DIV;
                     return 0;
+                }
+            break;
+
+            case STATE_IN_STRING:
+                //konec řetězce
+                if (c == '"'){
+                    token->type = TOKEN_STRING_LITERAL;
+                    token->attribute.s_val = word.str;
+                    return 0;
+                }else if (c == '\\'){
+                    state = STATE_IN_STRING_ESCAPE;
+                }else if (c == '\n' || c == EOF){
+                    //neukončený řetězec
+                    dstring_free(&word);
+                    return 1; //lexikální chyba
+                }
+                else{
+                    //obyčejný text
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                }
+            break;
+
+            case STATE_IN_STRING_ESCAPE:
+                if (c == '"'){
+                    if (!dstring_append(&word, '"')) return 99;
+                }else if (c == '\\'){
+                    if (!dstring_append(&word, '\\')) return 99;
+                }else if (c == 'n'){
+                    if (!dstring_append(&word, '\n')) return 99;
+                }else if (c == 'r'){
+                    if (!dstring_append(&word, '\r')) return 99;
+                }else if (c == 't'){
+                    if (!dstring_append(&word, '\t')) return 99;
+                }else{
+                    //ostatní escape sekvence jsou neplatné
+                    dstring_free(&word);
+                    return 1;
+                }
+                state = STATE_IN_STRING;
+
+            break;
+
+            case STATE_IN_MULTILINE_STRING:
+                if (c == EOF){
+                    dstring_free(&word);
+                    return 1;
+                }else if (c == '"'){
+                    state = STATE_MULTILINE_1;
+                }else{
+                    if (!dstring_append(&word, c)) return 99;
+                }
+            break;
+
+            case STATE_MULTILINE_1:
+                if (c == EOF){
+                    dstring_free(&word);
+                    return 1;
+                }else if (c == '"'){
+                    state = STATE_MULTILINE_2;
+                }else{
+                    if (!dstring_append(&word, '"')) return 99;
+                    if (!dstring_append(&word, c)) return 99;
+                    state = STATE_IN_MULTILINE_STRING;
+                }
+            break;
+
+            case STATE_MULTILINE_2:
+                if (c == EOF){
+                    dstring_free(&word);
+                    return 1;
+                }else if (c == '"'){
+                    token->type = TOKEN_STRING_LITERAL;
+                    token->attribute.s_val = word.str;
+                    return 0;
+                }else{
+                    if (!dstring_append(&word, '"')) return 99;
+                    if (!dstring_append(&word, '"')) return 99;
+                    if (!dstring_append(&word, c)) return 99;
+                    state = STATE_IN_MULTILINE_STRING;
                 }
             break;
         }

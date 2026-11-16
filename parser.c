@@ -13,7 +13,7 @@ static void syntax_error(const char *msg){
 
 // načte od lexeru další token
 static void next(void){
-    // current = get_next_token();
+    get_next_token(&current);
 }
 
 // ověří očekávaný typ tokenu a přesune se na další

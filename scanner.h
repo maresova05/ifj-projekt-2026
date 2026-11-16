@@ -1,4 +1,4 @@
-#ifdef SCANNER_H
+#ifndef SCANNER_H
 #define SCANNER_H
 
 
@@ -25,7 +25,7 @@ typedef enum {
     TOKEN_RETURN,
     TOKEN_VAL,
     TOKEN_VAR,
-    WHILE,
+    TOKEN_WHILE,
 
     //3,5. Klíčová slova (rozšíření)
     TOKEN_TRUE, //BOOLTHEN
@@ -44,7 +44,7 @@ typedef enum {
     TOKEN_GREATER, // >
     TOKEN_GREATER_EQ, // >=
     TOKEN_LPAREN, // (
-    TOKEN_RPAERN, // )
+    TOKEN_RPAREN, // )
     TOKEN_COLON, // :
     TOKEN_COMMA, // ,
     

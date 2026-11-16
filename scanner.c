@@ -23,6 +23,19 @@ typedef enum {
 
 
 }LexerState;
+static int indent_stack[100] = {0}; //zásobník
+static int top_idx = 0; //vrchol zásobníku
+static int pending_dedents = 0;
+
+static bool is_line_start = true;
+static int current_spaces = 0;
+
+static bool has_buffered_token = false;
+static Token buffered_token;
+
+
+
+
 
 //rozpoznávání klíčových slov
 TokenType resolve_keyword(const char* word){
@@ -49,7 +62,7 @@ TokenType resolve_keyword(const char* word){
 
 
 
-int get_next_token(Token *token){
+int get_raw_token(Token *token){    
     LexerState state = STATE_START;
     int c;
     dynamic_string_t word;
@@ -65,9 +78,21 @@ int get_next_token(Token *token){
                 if (c == EOF){
                     token->type = TOKEN_EOF;
                     return 0;
+                }else if (c == '\n'){
+                    is_line_start = true;
+                    current_spaces = 0;
+                    continue;
+                }else if (c == ' '){
+                    if (is_line_start) current_spaces++;
+                    continue;
+                }else if (c == '\t'){
+                    if (is_line_start) return 1; //lexikální chyba (tabulátor je pro odsazování zakázaný)
+                    continue;
                 }else if (isspace(c)){
                     continue;
-                }else if (c == '+'){
+                }
+                
+                else if (c == '+'){
                     token->type = TOKEN_PLUS;
                     return 0;
                 }else if (c == '-'){
@@ -351,4 +376,70 @@ int get_next_token(Token *token){
             break;
         }
     }
+}
+
+int get_next_token(Token *token){
+    if (pending_dedents > 0){
+        pending_dedents--;
+        token->type = TOKEN_DEDENT;
+        return 0;
+    }
+
+    if (has_buffered_token){
+        *token = buffered_token;
+        has_buffered_token = false;
+        return 0;
+    }
+
+    int result = get_raw_token(&buffered_token);
+    if (result != 0){
+        return result;
+    }
+
+    if (buffered_token.type == TOKEN_EOF){
+        if (top_idx > 0){
+            pending_dedents = top_idx;
+            top_idx = 0;
+
+            has_buffered_token = true;
+            pending_dedents--;
+            token->type = TOKEN_DEDENT;
+            return 0;
+        }
+        *token = buffered_token;
+        return 0;
+    }
+
+    if (is_line_start){
+        is_line_start = false;
+
+        if (current_spaces > indent_stack[top_idx]){
+            top_idx++;
+            indent_stack[top_idx] = current_spaces;
+
+            has_buffered_token = true;
+            token->type = TOKEN_INDENT;
+            return 0;
+        }else if (current_spaces < indent_stack[top_idx]){
+            int dedent_count = 0;
+            while (top_idx > 0 && current_spaces < indent_stack[top_idx]){
+                dedent_count++;
+                top_idx--;
+            }
+
+            if (current_spaces != indent_stack[top_idx]){
+                return 1; //lexikální chyba
+            }
+
+            if (dedent_count > 0){
+                has_buffered_token = true;
+                pending_dedents = dedent_count - 1;
+
+                token->type = TOKEN_DEDENT;
+                return 0;
+            }
+        }
+    }
+    *token = buffered_token;
+    return 0;
 }

@@ -1,8 +1,13 @@
+#define __USE_MINGW_ANSI_STDIO 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "expression.h"
+#include "symtable.h"
 #include "scanner.h"
+#include "expression.h"
+
+
 #include <inttypes.h>
 
 #define STACK_INIT_CAPACITY 16
@@ -63,6 +68,7 @@ typedef enum{
 typedef struct{
     StackSymbol type;
     Token token;
+    DataType expr_type;
 } StackItem;
 
 typedef struct {
@@ -242,7 +248,7 @@ void gen_push_operand(Token token){
             break;
         
         case TOKEN_DOUBLE_LITERAL:
-            printf("PUSHS float@%g\n", token.attribute.d_val);
+            printf("PUSHS float@%a\n", token.attribute.d_val);
             break;
         
         case TOKEN_STRING_LITERAL:
@@ -310,16 +316,17 @@ void gen_operator(TokenType op_type){
 /**
  * @brief Hlavní funkce pro syntaktickou analýzu výrazu
  * 
+ * @param global_table Tabulka od hlavního parseru.
  * @return ExprResult Vrací EXPR_OK při úspěchu, nebo příslušný chybový kód 
  *         při selhání
  */
-ExprResult parse_expression(){
+ExprResult parse_expression(SymTable *global_table){
     Stack s;
     stack_init(&s);
 
     Token empty_token = {0};
 
-    StackItem init_item = {STACK_DOLLAR, empty_token};
+    StackItem init_item = {STACK_DOLLAR, empty_token, 0};
     stack_push(&s, init_item);
 
     Token current_token;
@@ -346,14 +353,14 @@ ExprResult parse_expression(){
                     stack_pop(&s);
                 }
 
-                StackItem stop_item = {STACK_STOP, empty_token};
+                StackItem stop_item = {STACK_STOP, empty_token, 0};
                 stack_push(&s, stop_item);
 
                 if(has_non_term){
                     stack_push(&s, non_term_item);
                 }
 
-                StackItem input_item = {(StackSymbol)input_symbol, current_token};
+                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
                 stack_push(&s, input_item);
 
                 get_next_token(&current_token);
@@ -394,23 +401,120 @@ ExprResult parse_expression(){
                 //pravidlo E-> id
                 if(handle_len == 1 && handle[0].type == STACK_ID){
                     rule_matched = true;
-                    gen_push_operand(handle[0].token);
-                
+                    Token operand_token = handle[0].token; 
+                    DataType current_type;
+
+                    if(operand_token.type == TOKEN_IDENTIFIER){
+                        BSTNode *node = symtable_search(*global_table, operand_token.attribute.s_val);
+
+                        if (node == NULL){ 
+                            stack_free(&s);
+                            return EXPR_ERR_SEMANTC; //proměnná nebyl deklarovaná
+                        }
+
+                        current_type = node->data_type;
+                        gen_push_operand(operand_token);
+                        
+                    }else{
+                        if(operand_token.type == TOKEN_INT_LITERAL) current_type = TYPE_INT;
+                        if(operand_token.type == TOKEN_DOUBLE_LITERAL) current_type = TYPE_DOUBLE;
+                        if(operand_token.type == TOKEN_STRING_LITERAL) current_type = TYPE_STRING;
+
+                        gen_push_operand(operand_token);
+                    }
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
+                    stack_push(&s, non_term);
+
+                    continue;
                 } //pravidlo E-> E + E (-,*, /, ==, ...)
                 else if(handle_len == 3 && handle[0].type == STACK_NON_TERM &&
                         (handle[1].type == STACK_PLUS_MINUS_BIN || handle[1].type == STACK_MUL_DIV ||handle[1].type == STACK_RELATIONAL) &&
                         handle[2].type == STACK_NON_TERM){
 
                     rule_matched = true;
-                    gen_operator(handle[1].token.type);
-                
-                } //pravidlo E -> (E)
+                    
+                    DataType type1 = handle[2].expr_type;
+                    DataType type2 = handle[0].expr_type;
+                    DataType result_type;
+
+                    TokenType operand = handle[1].token.type;
+
+                    if(type1 == TYPE_INT && type2 == TYPE_INT){
+                        result_type = TYPE_INT;
+                        if(operand == TOKEN_DIV){
+                            printf("IDIVS\n"); //celočíselné dělení
+                        }else{
+                            gen_operator(operand);
+                        }
+                    }else if(type1 == TYPE_DOUBLE && type2==TYPE_DOUBLE){
+                        result_type = TYPE_DOUBLE;
+                        gen_operator(operand);
+                    }else if (type1 == TYPE_DOUBLE && type2 == TYPE_INT){
+                        result_type = TYPE_DOUBLE;
+                        printf("INT2FLOATS\n");
+                        gen_operator(operand);
+                    }else if (type1 == TYPE_INT && type2 == TYPE_DOUBLE){
+                        result_type = TYPE_DOUBLE;
+                        printf("POPS GF@temp_op\n"); //v GF nadefinovaná pomocná proměnná
+                        printf("INT2FLOATS\n");
+                        printf("PUSHS GF@temp_op\n");
+                        gen_operator(operand);
+                    }else{
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int + String
+                    }
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    stack_push(&s, non_term);
+                    continue;
+
+                } //pravidlo E -> E
+                else if(handle_len == 3 &&
+                        handle[0].type == STACK_NON_TERM &&
+                        handle[1].type == STACK_RELATIONAL &&
+                        handle[2].type == STACK_NON_TERM){
+
+                    rule_matched = true;
+
+                    DataType type1 = handle[0].expr_type;
+                    DataType type2 = handle[2].expr_type;
+                    TokenType operand = handle[1].token.type;
+                    
+                    DataType result_type = TYPE_BOOL;
+
+                    if(type1 == type2){
+                        gen_operator(operand);
+                    }else if (type1 == TYPE_DOUBLE && type2 == TYPE_INT){
+                        printf("INT2FLOATS\n");
+                        gen_operator(operand);
+                    }else if (type1 == TYPE_INT && type2 == TYPE_DOUBLE){
+                        printf("POPS GF@temp_op\n"); //v GF nadefinovaná pomocná proměnná
+                        printf("INT2FLOATS\n");
+                        printf("PUSHS GF@temp_op\n");
+                        gen_operator(operand);
+                    }else{
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int < String
+                    }
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    stack_push(&s, non_term);
+                    continue;
+                }
+                //pravidlo E -> (E)
                 else if(handle_len == 3 &&
                         handle[0].type == STACK_R_PAR &&
                         handle[1].type == STACK_NON_TERM &&
                         handle[2].type == STACK_L_PAR){
                     
-                    rule_matched = true;         
+                    rule_matched = true;
+                    
+                    DataType result_type = handle[1].expr_type;
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    stack_push(&s, non_term);
+                    continue;
                 
                 }//pravidlo E -> -E (unární operátor)
                 else if(handle_len == 2 &&
@@ -418,8 +522,30 @@ ExprResult parse_expression(){
                         handle[1].type == STACK_PLUS_MINUS_UN){
                     
                     rule_matched = true;
-                    printf("PUSHS int@-1\n");
-                    printf("MULS\n");
+                    DataType current_type = handle[0].expr_type;
+
+                    if(current_type == TYPE_INT){
+                        if(handle[1].token.type == TOKEN_MINUS){
+                            printf("POPS GF@tmp_op\n");
+                            printf("PUSHS int@0\n");
+                            printf("PUSHS GF@tmp_op\n");
+                            printf("SUBS\n");
+                        }
+                    }else if(current_type == TYPE_DOUBLE){
+                        if(handle[1].token.type == TOKEN_MINUS){
+                            printf("POPS GF@tmp_op\n");
+                            printf("PUSHS float@0.0\n");
+                            printf("PUSHS GF@tmp_op\n");
+                            printf("SUBS\n");
+                        }
+                    }else{
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTC; //zakázaná operace unární operátor nad String, Boolean, ...
+                    }
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
+                    stack_push(&s, non_term);
+                    continue;
                 }
 
                 if(!rule_matched){
@@ -427,7 +553,7 @@ ExprResult parse_expression(){
                     return EXPR_ERR_SYNTAX;
                 }
 
-                StackItem non_term = {STACK_NON_TERM, empty_token};
+                StackItem non_term = {STACK_NON_TERM, empty_token, 0};
                 stack_push(&s, non_term);
 
                 break;
@@ -435,7 +561,7 @@ ExprResult parse_expression(){
             }
 
             case E:{
-                StackItem input_item = {(StackSymbol)input_symbol, current_token};
+                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
                 stack_push(&s, input_item);
 
                 get_next_token(&current_token);
@@ -459,5 +585,54 @@ ExprResult parse_expression(){
     return EXPR_OK;
 }
 
+// =========================================================================
+// TESTOVACÍ BLOK (Blok 2 - Sémantika)
+// =========================================================================
 
+// Dummy tabulka symbolů pro náš test (aby kompilátor nehlásil chybu)
+BSTNode* symtable_search(SymTable table, const char* key) {
+    (void)table;
+    (void)key;
+    return NULL; 
+}
+
+SymTable global_dummy_table = NULL;
+
+// Testovací výraz: 3.14 * (2 + 5.0)
+
+// Test 6: Složitější relační výraz s konverzí ( (5.0 / 2.0) <= 3 )
+// Očekávaný kód: PUSHS float pro 5.0 a 2.0, DIVS, PUSHS int pro 3, 
+// následná konverze trojky (INT2FLOATS) a operace GTS + NOTS.
+Token test_sequence[] = {
+    { TOKEN_LPAREN, 1, {0} },
+    { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 5.0 } },
+    { TOKEN_DIV, 1, {0} },
+    { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.0 } },
+    { TOKEN_RPAREN, 1, {0} },
+    { TOKEN_LESS_EQ, 1, {0} },
+    { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+    { TOKEN_EOF, 1, {0} }
+};
+
+int token_index = 0;
+
+int get_next_token(Token *token) {
+    *token = test_sequence[token_index];
+    if (token->type != TOKEN_EOF && token->type != TOKEN_EOL) {
+        token_index++;
+    }
+    return 1;
+}
+
+int main() {
+    printf("--- START SÉMANTICKÉHO PARSERU ---\n");
+    
+    // Zde už voláme funkci s parametrem tabulky symbolů (jak jsi ji upravila)
+    ExprResult result = parse_expression(&global_dummy_table);
+    
+    printf("--- KONEC PARSERU ---\n");
+    printf("Navratovy kod: %d (0 = OK, 2 = SYNTAX, 6 = SEMANTICS)\n", result);
+    
+    return 0;
+}
 

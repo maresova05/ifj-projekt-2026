@@ -202,8 +202,14 @@ void stack_free(Stack *s){
  * 
  * @param t_tyoe Typ tokenu který převádíme.
  */
-Symbol map_token_to_symbol(TokenType t_type){
+Symbol map_token_to_symbol(TokenType t_type, int paren_count){
     switch(t_type){
+        case TOKEN_EOF:
+        case TOKEN_EOL:
+        case TOKEN_THEN:
+        case TOKEN_DO:
+        case TOKEN_COMMA:
+            return DOLLAR;
         case TOKEN_PLUS:
         case TOKEN_MINUS:
             return PLUS_MINUS_BIN;
@@ -223,7 +229,12 @@ Symbol map_token_to_symbol(TokenType t_type){
         case TOKEN_LPAREN:
             return L_PAR;
         case TOKEN_RPAREN:
-            return P_PAR;
+            if(paren_count > 0){
+                return P_PAR;
+            }else {
+                return DOLLAR;
+            }
+           
         
         case TOKEN_IDENTIFIER:
         case TOKEN_INT_LITERAL:
@@ -314,16 +325,16 @@ void gen_operator(TokenType op_type){
 
 
 /**
- * @brief Hlavní funkce pro syntaktickou analýzu výrazu
- * 
- * @param global_table Tabulka od hlavního parseru.
- * @return ExprResult Vrací EXPR_OK při úspěchu, nebo příslušný chybový kód 
- *         při selhání
+ * Hlavní funkce pro syntaktickou analýzu výrazu.
+ * @param global_table Ukazatel na globální tabulku symbolů pro kontrolu deklarací a typů.
+ * @param final_type Výstupní parametr, zde se uloží výsledný datový typ výrazu
+ * @param next_token Výstupní parametr, zde se uloží token na kterém se parser zastavil
+ * @return ExprResult Vrací EXPR_OK(0) při úspěchu, nebo příslušný chybový kód.
  */
-ExprResult parse_expression(SymTable *global_table){
+ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*next_token){
     Stack s;
     stack_init(&s);
-
+    int paren_count = 0;
     Token empty_token = {0};
 
     StackItem init_item = {STACK_DOLLAR, empty_token, 0};
@@ -331,7 +342,12 @@ ExprResult parse_expression(SymTable *global_table){
 
     Token current_token;
     get_next_token(&current_token);
-    Symbol input_symbol = map_token_to_symbol(current_token.type);
+
+    if(current_token.type == TOKEN_LPAREN){
+        paren_count++;
+    }
+
+    Symbol input_symbol = map_token_to_symbol(current_token.type, paren_count);
 
     bool success = false;
 
@@ -364,7 +380,10 @@ ExprResult parse_expression(SymTable *global_table){
                 stack_push(&s, input_item);
 
                 get_next_token(&current_token);
-                input_symbol = map_token_to_symbol(current_token.type);
+                if(current_token.type == TOKEN_LPAREN){
+                    paren_count++;
+                }
+                input_symbol = map_token_to_symbol(current_token.type, paren_count);
                 break;
             }
             case R:{
@@ -514,6 +533,8 @@ ExprResult parse_expression(SymTable *global_table){
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
                     stack_push(&s, non_term);
+
+                    paren_count--;
                     continue;
                 
                 }//pravidlo E -> -E (unární operátor)
@@ -565,7 +586,10 @@ ExprResult parse_expression(SymTable *global_table){
                 stack_push(&s, input_item);
 
                 get_next_token(&current_token);
-                input_symbol = map_token_to_symbol(current_token.type);
+                if(current_token.type == TOKEN_LPAREN){
+                    paren_count++;
+                }
+                input_symbol = map_token_to_symbol(current_token.type, paren_count);
                 break;
             }
 
@@ -582,5 +606,69 @@ ExprResult parse_expression(SymTable *global_table){
         }
     }
 
+    StackItem result_item = stack_top(&s);
+    if(final_type != NULL){
+        *final_type = result_item.expr_type;
+    }
+
+    if(next_token != NULL){
+        *next_token = current_token;
+    }
+
+    stack_free(&s);
     return EXPR_OK;
+}
+
+
+// =========================================================================
+// TESTOVACÍ BLOK (Blok 2 - Sémantika)
+// =========================================================================
+
+// Dummy tabulka symbolů pro náš test (aby kompilátor nehlásil chybu)
+BSTNode* symtable_search(SymTable table, const char* key) {
+    (void)table;
+    (void)key;
+    return NULL; 
+}
+
+SymTable global_dummy_table = NULL;
+
+// Testovací výraz: 3.14 * (2 + 5.0)
+Token test_sequence[] = {
+    { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+    { TOKEN_MUL, 1, {0} },
+    { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.5 } },
+    { TOKEN_EOF, 1, {0} }
+};
+int token_index = 0;
+
+int get_next_token(Token *token) {
+    *token = test_sequence[token_index];
+    if (token->type != TOKEN_EOF && token->type != TOKEN_EOL) {
+        token_index++;
+    }
+    return 1;
+}
+
+
+int main() {
+    printf("--- START SÉMANTICKÉHO PARSERU ---\n");
+    
+   
+    DataType final_type;
+    Token next_token;
+
+    
+    ExprResult result = parse_expression(&global_dummy_table, &final_type, &next_token);
+    
+    printf("--- KONEC PARSERU ---\n");
+   if (result == EXPR_OK) {
+        printf("Preklad uspesny! (Kod: %d)\n", result);
+        printf("-> Vysledny datovy typ: %d\n", final_type);
+        printf("-> Vyraz zastaven na tokenu: %d\n", next_token.type);
+    } else {
+        printf("Preklad selhal s chybovym kodem: %d\n", result);
+    }
+    
+    return 0;
 }

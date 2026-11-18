@@ -323,7 +323,6 @@ void gen_operator(TokenType op_type){
     }
 }
 
-
 /**
  * Hlavní funkce pro syntaktickou analýzu výrazu.
  * @param global_table Ukazatel na globální tabulku symbolů pro kontrolu deklarací a typů.
@@ -448,7 +447,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     continue;
                 } //pravidlo E-> E + E (-,*, /, ==, ...)
                 else if(handle_len == 3 && handle[0].type == STACK_NON_TERM &&
-                        (handle[1].type == STACK_PLUS_MINUS_BIN || handle[1].type == STACK_MUL_DIV ||handle[1].type == STACK_RELATIONAL) &&
+                        (handle[1].type == STACK_PLUS_MINUS_BIN || handle[1].type == STACK_MUL_DIV) &&
                         handle[2].type == STACK_NON_TERM){
 
                     rule_matched = true;
@@ -459,7 +458,15 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 
                     TokenType operand = handle[1].token.type;
 
-                    if(type1 == TYPE_INT && type2 == TYPE_INT){
+                    if(operand == TOKEN_PLUS && type1 == TYPE_STRING && type2 == TYPE_STRING){
+                         result_type = TYPE_STRING;
+
+                         printf("POPS GF@$expr_op2\n");
+                         printf("POPS GF@$expr_op1\n");
+                         printf("CONCAT GF@$expr_op1 GF@$expr_op1 GF@$expr_op2\n");
+                         printf("PUSHS GF@$expr_op1\n");
+
+                    }else if(type1 == TYPE_INT && type2 == TYPE_INT){
                         result_type = TYPE_INT;
                         if(operand == TOKEN_DIV){
                             printf("IDIVS\n"); //celočíselné dělení
@@ -488,7 +495,43 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     stack_push(&s, non_term);
                     continue;
 
-                } //pravidlo E -> E
+                }//pravidlo E -> E > E (== =!)
+                else if(handle_len == 3 && handle[0].type == STACK_NON_TERM &&
+                        handle[1].type == STACK_RELATIONAL &&
+                        handle[2].type == STACK_NON_TERM){
+
+                    rule_matched = true;
+                    
+                    DataType type1 = handle[2].expr_type;
+                    DataType type2 = handle[0].expr_type;
+                    TokenType operand = handle[1].token.type;
+                
+                    if(type1 == TYPE_DOUBLE && type2 == TYPE_INT){
+                        printf("INT2FLOATS\n");
+                    }else if(type1 == TYPE_INT && type2 == TYPE_DOUBLE){
+                        printf("POPS GF@$expr_op2\n");
+                        printf("INT2FLOATS\n");
+                        printf("PUSHS GF@$expr_op2\n");
+                    }else if(type1 == TYPE_INT && type2 == TYPE_INT){
+                        //OK
+                    }else if(type1 == TYPE_DOUBLE && type2 == TYPE_DOUBLE){
+                        //OK
+                    }else if(type1 == TYPE_STRING && type2 == TYPE_STRING){
+                        //OK
+                    }else if(type1 == type2 && (operand == TOKEN_EQ || operand == TOKEN_NEQ)){
+                        //OK
+                    }else{
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int + String
+                    }
+
+                    gen_operator(operand);
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL};
+                    stack_push(&s, non_term);
+                    continue;
+
+                }//pravidlo E -> E
                 else if(handle_len == 3 &&
                         handle[0].type == STACK_NON_TERM &&
                         handle[1].type == STACK_RELATIONAL &&
@@ -633,11 +676,13 @@ BSTNode* symtable_search(SymTable table, const char* key) {
 
 SymTable global_dummy_table = NULL;
 
-// Testovací výraz: 3.14 * (2 + 5.0)
+// Testovací výraz
 Token test_sequence[] = {
-    { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
-    { TOKEN_MUL, 1, {0} },
-    { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.5 } },
+    { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
+    { TOKEN_LESS, 1, {0} },
+    { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+    { TOKEN_LESS, 1, {0} },
+    { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
     { TOKEN_EOF, 1, {0} }
 };
 int token_index = 0;

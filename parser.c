@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include "parser.h"
 #include "scanner.h"
@@ -54,6 +55,55 @@ static void parse_term(void){
         default:
             syntax_error("expected identifier or literal");
     }
+}
+
+static void parse_statement(void){
+    // TODO (docasne)
+    next();
+}
+
+/**
+* @brief určování začátku příkazu
+* @return true pokud aktuální token může začínat příkaz, jinak false
+*/
+static bool is_statement_start(void){
+    switch(current.type){
+        case TOKEN_WHILE:
+        case TOKEN_IDENTIFIER:
+        case TOKEN_IF:
+        case TOKEN_RETURN:
+        case TOKEN_VAL:    
+        case TOKEN_VAR:    
+        case TOKEN_PLUS:    
+        case TOKEN_MINUS:    
+        case TOKEN_INT_LITERAL:    
+        case TOKEN_DOUBLE_LITERAL:    
+        case TOKEN_STRING_LITERAL:    
+        case TOKEN_LPAREN:    
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
+* @brief cyklem projede seznam příkazů
+*/
+static void parse_statements(void){
+    parse_statement();
+    while(is_statement_start()){
+        parse_statement();
+    }
+}
+
+/**
+* @brief parsuje blok, uvnitř cyklus příkazů, (pravidlo 22)
+*/
+static void parse_block(void){
+    expect(TOKEN_EOL,"expected end of line");
+    expect(TOKEN_INDENT,"expected indent");
+    parse_statements();
+    expect(TOKEN_DEDENT,"expected dedent");
 }
 
 /**

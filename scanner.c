@@ -20,6 +20,10 @@ typedef enum {
     STATE_IN_MULTILINE_STRING,
     STATE_MULTILINE_1,
     STATE_MULTILINE_2,
+    STATE_OR,
+    STATE_AND,
+    STATE_AT,
+    STATE_DOT,
 
 
 }LexerState;
@@ -50,13 +54,20 @@ TokenType resolve_keyword(const char* word){
     if (strcmp(word, "var") == 0) return TOKEN_VAR;
     if (strcmp(word, "while") == 0) return TOKEN_WHILE;
 
+    if (strcmp(word, "Int") == 0) return TOKEN_KW_INT;
+    if (strcmp(word, "Double") == 0) return TOKEN_KW_DOUBLE;
+    if (strcmp(word, "String") == 0) return TOKEN_KW_STRING;
+    if (strcmp(word, "Unit") == 0) return TOKEN_KW_UNIT;
+
     //rozšíření BOOLTHEN
+    if (strcmp(word, "Boolean") == 0) return TOKEN_KW_BOOLEAN;
     if (strcmp(word, "true") == 0) return TOKEN_TRUE;
     if (strcmp(word, "false") == 0) return TOKEN_FALSE;
+    /*
     if (strcmp(word, "and") == 0) return TOKEN_AND;
     if (strcmp(word, "or") == 0) return TOKEN_OR;
     if (strcmp(word, "not") == 0) return TOKEN_NOT;
-    
+    */
     return TOKEN_IDENTIFIER;
 }
 
@@ -101,8 +112,26 @@ int get_raw_token(Token *token){
                 }else if (c == '*'){
                     token->type = TOKEN_MUL;
                     return 0;
+                }else if (c == '('){
+                    token->type = TOKEN_LPAREN;
+                }else if (c == ')'){
+                    token->type = TOKEN_RPAREN;
+                }else if (c == ':'){
+                    token->type = TOKEN_COLON;
+                }else if (c == ','){
+                    token->type = TOKEN_COMMA;
+                }else if (c == ';'){
+                    token->type = TOKEN_SEMICOLON;
                 }else if (c == '/'){
                     state = STATE_SLASH;
+                }else if (c == '&'){
+                    state = STATE_AND;
+                }else if (c == '|'){
+                    state = STATE_OR;
+                }else if (c == '@'){
+                    state = STATE_AT;
+                }else if (c == '.'){
+                    state = STATE_DOT;
                 }else if (c == '='){
                     state = STATE_ASSIGN;
                 }else if (c == '!'){
@@ -159,8 +188,20 @@ int get_raw_token(Token *token){
                     }
                 }else{
                     ungetc(c, stdin);
+
+                    if (strcmp(word.str, "_") == 0){
+                        dstring_free(&word);
+                        return 1; //lexikální chyba
+                    }
+
                     token->type = resolve_keyword(word.str);
-                    token->attribute.s_val = word.str;
+                    if (token->type == TOKEN_IDENTIFIER){
+                        token->attribute.s_val = word.str;
+                    }else{
+                        dstring_free(&word);
+                        token->attribute.s_val = NULL;
+                    }
+                    
                     return 0;
                 }
             break;
@@ -374,6 +415,52 @@ int get_raw_token(Token *token){
                     state = STATE_IN_MULTILINE_STRING;
                 }
             break;
+
+            case STATE_AND:
+                if (c == '&'){
+                    token->type = TOKEN_AND;
+                    return 0;
+                }
+                return 1; //lexikální chyba
+
+            case STATE_OR:
+                if (c == '|'){
+                    token->type = TOKEN_OR;
+                    return 0;
+                }
+                return 1; //lexikální chyba
+
+            case STATE_AT:
+                if (c == 'm'){
+                    int c2 = getchar();
+                    int c3 = getchar();
+                    int c4 = getchar();
+                    int c5 = getchar();
+
+                    //kontrola, jestli se za @ nachází přesně "main"
+                    if (c2 == 'a' && c3 == 'i' && c4 == 'n' && !(isalnum(c5) || c5 == '_')){
+                        ungetc(c5, stdin);
+                        token->type = TOKEN_MAIN;
+                        return 0;
+                    }
+                }
+                return 1; //lexikální chyba
+
+            case STATE_DOT:
+                if (isdigit(c)){
+                    if (!dstring_init(&word)) return 99;
+                    if (!dstring_append(&word, '0') || !dstring_append(&word, '.') || !dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
+                    state = STATE_IN_DOUBLE;
+                }else{
+                    ungetc(c, stdin);
+                    token->type = TOKEN_DOT;
+                    return 0;
+                }
+            break;
+
         }
     }
 }
@@ -442,4 +529,19 @@ int get_next_token(Token *token){
     }
     *token = buffered_token;
     return 0;
+}
+
+//AI: optimalizace pro testování
+void scanner_reset(void) {
+    // Pokud v bufferu zůstal viset alokovaný token po předchozí chybě, uvolníme ho
+    if (has_buffered_token && 
+       (buffered_token.type == TOKEN_IDENTIFIER || buffered_token.type == TOKEN_STRING_LITERAL)) {
+        free(buffered_token.attribute.s_val);
+    }
+    top_idx = 0;
+    indent_stack[0] = 0;
+    pending_dedents = 0;
+    is_line_start = true;
+    current_spaces = 0;
+    has_buffered_token = false;
 }

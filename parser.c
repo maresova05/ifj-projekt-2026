@@ -13,6 +13,7 @@ static bool is_simple_statement_start(void);
 static bool is_statement_start(void);
 static void parse_if(void);
 static void parse_while(void);
+static void skip_to_end(void);
 
 
 /**
@@ -88,12 +89,96 @@ static void parse_statement(void){
     }
 }
 
-// TODO, dočasné řešení pro překlad, přeskočí tokeny do konce příkazu
-static void parse_simple_statement(void){
+// dočasné přeskoky pro překlad
+static void parse_var_def(void){
+    skip_to_end();
+}
+
+static void parse_return(void){
+    skip_to_end();
+}
+static void parse_assign(void){
+    skip_to_end();
+}
+
+static void parse_call(void){
+    skip_to_end();
+}
+
+static void skip_to_end(void){
     while(current.type != TOKEN_EOL &&
           current.type != TOKEN_EOF &&
           current.type != TOKEN_SEMICOLON){
-        next();
+            next(); // TODO
+          }
+}
+
+/**
+* @return true, pokud je aktuální token binární operátor
+*/
+static bool is_binary_op(void){
+    switch(current.type){
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+        case TOKEN_MUL:    
+        case TOKEN_DIV:    
+        case TOKEN_LESS:    
+        case TOKEN_LESS_EQ:    
+        case TOKEN_GREATER:    
+        case TOKEN_GREATER_EQ:    
+        case TOKEN_EQ:    
+        case TOKEN_NEQ:    
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
+* @brief rozhoduje podle prvního a pro identifikátor druhého tokenu (pravidla 34 - 41)
+*/
+static void parse_simple_statement(void){
+    switch(current.type){
+        case TOKEN_VAL:
+        case TOKEN_VAR:
+            parse_var_def();
+            break;
+        case TOKEN_RETURN:
+            parse_return();
+            break;
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+        case TOKEN_INT_LITERAL:
+        case TOKEN_DOUBLE_LITERAL:
+        case TOKEN_STRING_LITERAL:
+        case TOKEN_LPAREN:
+            skip_to_end();
+            break;
+        case TOKEN_IDENTIFIER:
+            next();
+            switch(current.type){
+                case TOKEN_ASSIGN:
+                case TOKEN_LPAREN:
+                case TOKEN_PLUS:
+                case TOKEN_MINUS:
+                case TOKEN_MUL:
+                case TOKEN_DIV:
+                case TOKEN_LESS:
+                case TOKEN_LESS_EQ:
+                case TOKEN_GREATER:
+                case TOKEN_GREATER_EQ:
+                case TOKEN_EQ:
+                case TOKEN_NEQ:
+                case TOKEN_SEMICOLON:
+                case TOKEN_EOL:
+                    skip_to_end();
+                    break;
+                default:
+                    syntax_error("expected something");
+            }
+            break;
+        default:
+            syntax_error("expected something");
     }
 }
 

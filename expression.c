@@ -209,6 +209,7 @@ Symbol map_token_to_symbol(TokenType t_type, int paren_count){
         case TOKEN_THEN:
         case TOKEN_DO:
         case TOKEN_COMMA:
+        case TOKEN_SEMICOLON:
             return DOLLAR;
         case TOKEN_PLUS:
         case TOKEN_MINUS:
@@ -248,9 +249,29 @@ Symbol map_token_to_symbol(TokenType t_type, int paren_count){
 }
 
 /**
+ * @brief Vygeneruje instrukci PUSHS pro string s převodem znaků ASCII.
+ * 
+ * @param str Ukazatel na řetězec zakončený znakem '\0'.
+ */
+static void gen_pushs_string(const char *str){
+    printf("PUSHS string@");
+    if(str != NULL){
+        for(size_t i = 0; str[i] != '\0'; i++){
+            unsigned char c = (unsigned char)str[i];
+            if(c <= 32 || c == 35 || c == 92 || c>= 127){
+                printf("\\%03u", c);
+            }else{
+                putchar(c);
+            }
+        }
+    }
+    printf("\n");
+}
+
+/**
  * @brief Funkce pro generování instrukce PUSHS
  * 
- * @param token Token který chceme vložit.
+ * @param token Token označující typ.
  */
 void gen_push_operand(Token token){
     switch (token.type){
@@ -263,7 +284,7 @@ void gen_push_operand(Token token){
             break;
         
         case TOKEN_STRING_LITERAL:
-            printf("PUSHS string@%s\n", token.attribute.s_val);
+            gen_pushs_string(token.attribute.s_val);;
             break;
         
         case TOKEN_IDENTIFIER:
@@ -275,7 +296,11 @@ void gen_push_operand(Token token){
     }
 }
 
-
+/**
+ * @brief Funkce pro generování aritmetických operací.
+ * 
+ * @param token Token označující typ operace.
+ */
 void gen_operator(TokenType op_type){
     switch(op_type){
         case TOKEN_PLUS:
@@ -323,6 +348,8 @@ void gen_operator(TokenType op_type){
     }
 }
 
+
+
 /**
  * Hlavní funkce pro syntaktickou analýzu výrazu.
  * @param global_table Ukazatel na globální tabulku symbolů pro kontrolu deklarací a typů.
@@ -332,12 +359,20 @@ void gen_operator(TokenType op_type){
  */
 ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*next_token){
     Stack s;
-    stack_init(&s);
+   
+    if(!stack_init(&s)){
+        return EXPR_ERR_INTERNAL;
+    }
+
     int paren_count = 0;
     Token empty_token = {0};
 
     StackItem init_item = {STACK_DOLLAR, empty_token, 0};
-    stack_push(&s, init_item);
+    
+    if(!stack_push(&s, init_item)){
+        stack_free(&s);
+        return EXPR_ERR_INTERNAL;
+    }
 
     Token current_token;
     get_next_token(&current_token);
@@ -369,14 +404,23 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                 }
 
                 StackItem stop_item = {STACK_STOP, empty_token, 0};
-                stack_push(&s, stop_item);
+                if(!stack_push(&s, stop_item)){
+                    stack_free(&s);
+                    return EXPR_ERR_INTERNAL;
+                }
 
                 if(has_non_term){
-                    stack_push(&s, non_term_item);
+                    if(!stack_push(&s, non_term_item)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
                 }
 
                 StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
-                stack_push(&s, input_item);
+                if(!stack_push(&s, input_item)){
+                    stack_free(&s);
+                    return EXPR_ERR_INTERNAL;
+                }
 
                 get_next_token(&current_token);
                 if(current_token.type == TOKEN_LPAREN){
@@ -427,7 +471,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 
                         if (node == NULL){ 
                             stack_free(&s);
-                            return EXPR_ERR_SEMANTC; //proměnná nebyl deklarovaná
+                            return EXPR_ERR_UNDEF; //proměnná nebyl deklarovaná
                         }
 
                         current_type = node->data_type;
@@ -435,14 +479,17 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         
                     }else{
                         if(operand_token.type == TOKEN_INT_LITERAL) current_type = TYPE_INT;
-                        if(operand_token.type == TOKEN_DOUBLE_LITERAL) current_type = TYPE_DOUBLE;
-                        if(operand_token.type == TOKEN_STRING_LITERAL) current_type = TYPE_STRING;
-
+                        else if(operand_token.type == TOKEN_DOUBLE_LITERAL) current_type = TYPE_DOUBLE;
+                        else if(operand_token.type == TOKEN_STRING_LITERAL) current_type = TYPE_STRING;
+                         
                         gen_push_operand(operand_token);
                     }
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
 
                     continue;
                 } //pravidlo E-> E + E (-,*, /, ==, ...)
@@ -482,17 +529,20 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         gen_operator(operand);
                     }else if (type1 == TYPE_INT && type2 == TYPE_DOUBLE){
                         result_type = TYPE_DOUBLE;
-                        printf("POPS GF@temp_op\n"); //v GF nadefinovaná pomocná proměnná
+                        printf("POPS GF@$expr_op2\n"); //v GF nadefinovaná pomocná proměnná
                         printf("INT2FLOATS\n");
-                        printf("PUSHS GF@temp_op\n");
+                        printf("PUSHS GF@$expr_op2\n");
                         gen_operator(operand);
                     }else{
                         stack_free(&s);
-                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int + String
+                        return EXPR_ERR_SEMANTIC; //zakázané operace typu Int + String
                     }
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
                     continue;
 
                 }//pravidlo E -> E > E (== =!)
@@ -522,13 +572,16 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         //OK
                     }else{
                         stack_free(&s);
-                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int + String
+                        return EXPR_ERR_SEMANTIC; //zakázané operace typu Int + String
                     }
 
                     gen_operator(operand);
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
                     continue;
 
                 }//pravidlo E -> E
@@ -551,17 +604,20 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         printf("INT2FLOATS\n");
                         gen_operator(operand);
                     }else if (type1 == TYPE_INT && type2 == TYPE_DOUBLE){
-                        printf("POPS GF@temp_op\n"); //v GF nadefinovaná pomocná proměnná
+                        printf("POPS GF@$expr_op2\n"); //v GF nadefinovaná pomocná proměnná
                         printf("INT2FLOATS\n");
-                        printf("PUSHS GF@temp_op\n");
+                        printf("PUSHS GF@$expr_op2\n");
                         gen_operator(operand);
                     }else{
                         stack_free(&s);
-                        return EXPR_ERR_SEMANTC; //zakázané operace typu Int < String
+                        return EXPR_ERR_SEMANTIC; //zakázané operace typu Int < String
                     }
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
                     continue;
                 }
                 //pravidlo E -> (E)
@@ -575,7 +631,10 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     DataType result_type = handle[1].expr_type;
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
 
                     paren_count--;
                     continue;
@@ -604,11 +663,14 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         }
                     }else{
                         stack_free(&s);
-                        return EXPR_ERR_SEMANTC; //zakázaná operace unární operátor nad String, Boolean, ...
+                        return EXPR_ERR_SEMANTIC; //zakázaná operace unární operátor nad String, Boolean, ...
                     }
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
-                    stack_push(&s, non_term);
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
                     continue;
                 }
 
@@ -618,7 +680,10 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                 }
 
                 StackItem non_term = {STACK_NON_TERM, empty_token, 0};
-                stack_push(&s, non_term);
+                if(!stack_push(&s, non_term)){
+                    stack_free(&s);
+                    return EXPR_ERR_INTERNAL;
+                }
 
                 break;
                 
@@ -626,7 +691,10 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 
             case E:{
                 StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
-                stack_push(&s, input_item);
+                if(!stack_push(&s, input_item)){
+                    stack_free(&s);
+                    return EXPR_ERR_INTERNAL;
+                }
 
                 get_next_token(&current_token);
                 if(current_token.type == TOKEN_LPAREN){
@@ -638,12 +706,25 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 
             case X:{
                 if(top_term == DOLLAR && input_symbol == DOLLAR){
-                    success = true;
-                }else{
+                    if(s.top != 1 || s.items[1].type != STACK_NON_TERM){
+                        stack_free(&s);
+                        return EXPR_ERR_SYNTAX;
+                    }
+
+                    if(final_type != NULL){
+                        *final_type = s.items[1].expr_type;
+                    }
+
+                    if(next_token != NULL){
+                        *next_token = current_token;
+                    }
+
                     stack_free(&s);
-                    return EXPR_ERR_SYNTAX;
+                    return EXPR_OK;
                 }
-                break;
+                
+                stack_free(&s);
+                return EXPR_ERR_SYNTAX;
             }
                 
         }
@@ -663,57 +744,299 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 }
 
 
-// =========================================================================
-// TESTOVACÍ BLOK (Blok 2 - Sémantika)
-// =========================================================================
+#ifdef TEST_EXPR
 
-// Dummy tabulka symbolů pro náš test (aby kompilátor nehlásil chybu)
-BSTNode* symtable_search(SymTable table, const char* key) {
+#include <stdio.h>
+#include <stdbool.h>
+
+// Globální ukazatel na aktuálně běžící testovací sekvenci tokenů
+static const Token *g_test_tokens = NULL;
+static int g_test_idx = 0;
+
+// Mockovaná funkce scanneru
+int get_next_token(Token *token) {
+    *token = g_test_tokens[g_test_idx++];
+    return 0; // vrací 0 (úspěch)
+}
+
+// Mockovaná funkce tabulky symbolů pro samostatné testy
+BSTNode* symtable_search(SymTable table, const char *key) {
     (void)table;
     (void)key;
-    return NULL; 
+    return NULL;
 }
 
-SymTable global_dummy_table = NULL;
+// Počítadla výsledků
+static int g_tests_total = 0;
+static int g_tests_passed = 0;
 
-// Testovací výraz
-Token test_sequence[] = {
-    { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
-    { TOKEN_LESS, 1, {0} },
-    { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
-    { TOKEN_LESS, 1, {0} },
-    { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
-    { TOKEN_EOF, 1, {0} }
-};
-int token_index = 0;
+/**
+ * Spustí jeden test, porovná návratový kód (a při úspěchu i typ a ukončovací token)
+ * a vypíše výsledek na stderr, aby se nemíchal s generovaným IFJcode26 na stdout.
+ */
+static void run_test(const char *name,
+                     const Token *tokens,
+                     ExprResult exp_res,
+                     DataType exp_type,
+                     TokenType exp_stop) {
+    g_tests_total++;
+    g_test_tokens = tokens;
+    g_test_idx = 0;
 
-int get_next_token(Token *token) {
-    *token = test_sequence[token_index];
-    if (token->type != TOKEN_EOF && token->type != TOKEN_EOL) {
-        token_index++;
+    DataType actual_type = (DataType)-1;
+    Token actual_stop = {0};
+
+    fprintf(stderr, "\n[TEST %02d] %s\n", g_tests_total, name);
+    ExprResult actual_res = parse_expression(NULL, &actual_type, &actual_stop);
+
+    bool ok = (actual_res == exp_res);
+    if (ok && exp_res == EXPR_OK) {
+        if (actual_type != exp_type || actual_stop.type != exp_stop) {
+            ok = false;
+        }
     }
-    return 1;
-}
 
-
-int main() {
-    printf("--- START SÉMANTICKÉHO PARSERU ---\n");
-    
-   
-    DataType final_type;
-    Token next_token;
-
-    
-    ExprResult result = parse_expression(&global_dummy_table, &final_type, &next_token);
-    
-    printf("--- KONEC PARSERU ---\n");
-   if (result == EXPR_OK) {
-        printf("Preklad uspesny! (Kod: %d)\n", result);
-        printf("-> Vysledny datovy typ: %d\n", final_type);
-        printf("-> Vyraz zastaven na tokenu: %d\n", next_token.type);
+    if (ok) {
+        g_tests_passed++;
+        fprintf(stderr, "  -> PASS (kod=%d", actual_res);
+        if (exp_res == EXPR_OK) {
+            fprintf(stderr, ", typ=%d, stop_token=%d", actual_type, actual_stop.type);
+        }
+        fprintf(stderr, ")\n");
     } else {
-        printf("Preklad selhal s chybovym kodem: %d\n", result);
+        fprintf(stderr, "  -> FAIL!\n");
+        fprintf(stderr, "     Ocekavano: kod=%d", exp_res);
+        if (exp_res == EXPR_OK) {
+            fprintf(stderr, ", typ=%d, stop_token=%d", exp_type, exp_stop);
+        }
+        fprintf(stderr, "\n     Ziskano:   kod=%d", actual_res);
+        if (actual_res == EXPR_OK) {
+            fprintf(stderr, ", typ=%d, stop_token=%d", actual_type, actual_stop.type);
+        }
+        fprintf(stderr, "\n");
     }
-    
-    return 0;
 }
+
+int main(void) {
+    // --- 1. ARITMETIKA A PRIORITA ---
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 4 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Aritmetika a priorita: 2 + 3 * 4", t, EXPR_OK, TYPE_INT, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_LPAREN, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_RPAREN, 1, {0} },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Zavorky: (5 + 3) * 2", t, EXPR_OK, TYPE_INT, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 10 } },
+            { TOKEN_DIV, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Celociselne deleni: 10 / 3 -> Int", t, EXPR_OK, TYPE_INT, TOKEN_EOF);
+    }
+
+    // --- 2. IMPLICITNI KONVERZE INT -> DOUBLE ---
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.5 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Konverze levy Int -> Double: 5 * 2.5", t, EXPR_OK, TYPE_DOUBLE, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.5 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Konverze pravy Int -> Double: 2.5 + 5", t, EXPR_OK, TYPE_DOUBLE, TOKEN_EOF);
+    }
+
+    // --- 3. RETEZCE: KONKATENACE A ESCAPOVANI ---
+    {
+        Token t[] = {
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "Ahoj " } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "svete" } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Konkatenace: \"Ahoj \" + \"svete\"", t, EXPR_OK, TYPE_STRING, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "retezec s lomitkem \\ a\nnovym#radkem" } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Escapovani retezce (zkontroluj stdout)", t, EXPR_OK, TYPE_STRING, TOKEN_EOF);
+    }
+
+    // --- 4. RELACNI OPERATORY ---
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_LESS_EQ, 1, {0} },
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 5.5 } },
+            { TOKEN_THEN, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Relace + konverze + then: 5 <= 5.5 then", t, EXPR_OK, TYPE_BOOL, TOKEN_THEN);
+    }
+    {
+        Token t[] = {
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "abc" } },
+            { TOKEN_LESS, 1, {0} },
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "abd" } },
+            { TOKEN_DO, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Relace String + do: \"abc\" < \"abd\" do", t, EXPR_OK, TYPE_BOOL, TOKEN_DO);
+    }
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 4 } },
+            { TOKEN_EQ, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 14 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Priorita aritmetiky pred relaci: 2 + 3 * 4 == 14", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+
+    // --- 5. UKONCOVACI TOKENY A POCITADLO ZAVOREK ---
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_COMMA, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 10 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Zastaveni na carce: 5 + 5 , 10", t, EXPR_OK, TYPE_INT, TOKEN_COMMA);
+    }
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_SEMICOLON, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Zastaveni na stredniku: 1 + 2 ;", t, EXPR_OK, TYPE_INT, TOKEN_SEMICOLON);
+    }
+    {
+        Token t[] = {
+            { TOKEN_LPAREN, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_RPAREN, 1, {0} },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_RPAREN, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Vnorene zavorky + konec argumentu: (2 + 3) * 5 )", t, EXPR_OK, TYPE_INT, TOKEN_RPAREN);
+    }
+
+    // --- 6. SEMANTICKE CHYBY (KOD 6) ---
+    {
+        Token t[] = {
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "cislo: " } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Semanticka chyba: \"cislo: \" + 5", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 5.5 } },
+            { TOKEN_MINUS, 1, {0} },
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "text" } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Semanticka chyba: 5.5 - \"text\"", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_STRING_LITERAL, 1, { .s_val = "text" } },
+            { TOKEN_EQ, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Semanticka chyba: \"text\" == 5", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+
+    // --- 7. SYNTAKTICKE CHYBY (KOD 2) ---
+    {
+        Token t[] = {
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 3.14 } },
+            { TOKEN_MUL, 1, {0} },
+            { TOKEN_DIV, 1, {0} },
+            { TOKEN_DOUBLE_LITERAL, 1, { .d_val = 2.0 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Syntakticka chyba: 3.14 * / 2.0", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
+            { TOKEN_LESS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_LESS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Syntakticka chyba (retezeni relaci): 1 < 2 < 3", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_LPAREN, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Syntakticka chyba (neuzavrena zavorka): (5 + 3", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("Syntakticka chyba (prazdny vyraz)", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+
+    // --- SOUHRN ---
+    fprintf(stderr, "\n========================================\n");
+    fprintf(stderr, "VYSLEDEK: %d / %d testu proslo.\n", g_tests_passed, g_tests_total);
+    fprintf(stderr, "========================================\n");
+
+    return (g_tests_passed == g_tests_total) ? 0 : 1;
+}
+
+#endif // TEST_EXPR

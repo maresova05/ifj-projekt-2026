@@ -109,12 +109,19 @@ static void parse_statement(void){
 static void parse_var_def(void){
     next();
     expect(TOKEN_IDENTIFIER,"expected identifier");
+    if(current.type == TOKEN_COLON){
+        next();
+        parse_type();
+    }
     expect(TOKEN_ASSIGN,"expected =");
     parse_rhs();
 }
 
 static void parse_return(void){
     expect(TOKEN_RETURN,"expected return");
+    if(current.type == TOKEN_EOL || current.type == TOKEN_SEMICOLON){
+        return;
+    }
     parse_rhs();
 }
 static void parse_assign(void){
@@ -344,6 +351,8 @@ static void parse_rhs(void){
                 parse_call();
             } else if(current.type == TOKEN_SEMICOLON || current.type == TOKEN_EOL){
                 // nothing
+            } else {
+                syntax_error("expected something");
             }
             break;
         default:

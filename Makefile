@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra
 DEPFLAGS = -MMD -MP
 TARGET = main
-SRC = $(wildcard src/*.c)
+SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 DEPS = $(OBJ:.o=.d)
 

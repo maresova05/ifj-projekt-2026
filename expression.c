@@ -17,9 +17,12 @@
 */
 typedef enum{
     PLUS_MINUS_UN, //Unární +-
+    NOT,        //Unární !
     MUL_DIV,    //*/
     PLUS_MINUS_BIN, //Binární +-
     RELATIONAL, // <, <=, >, >=, ==, !=
+    AND,    //&&
+    OR,     //||
     L_PAR, // (
     P_PAR, // )
     ID, //Operandy (proměnné, literály)
@@ -34,16 +37,32 @@ typedef enum{
     X  //Syntaktická chyba
 }Action;
 
-const Action precedence_table[SIZE][SIZE] = {
-    // +-   */  +-  REL (   )   ID  $
+/*const Action precedence_table[SIZE][SIZE] = {
+    // +-   */ /* +-  REL (   )   ID  $
     {   S,  R,  R,  R,  S,  R,  S,  R}, // +-
-    {   S,  R,  R,  R,  S,  R,  S,  R}, // */
+    {   S,  R,  R,  R,  S,  R,  S,  R}, // *//*
     {   S,  S,  R,  R,  S,  R,  S,  R}, // +-
     {   S,  S,  S,  X,  S,  R,  S,  R}, // REL
     {   S,  S,  S,  S,  S,  E,  S,  X}, // (
     {   R,  R,  R,  R,  X,  R,  X,  R}, // )
     {   R,  R,  R,  R,  X,  R,  X,  R}, // ID
     {   S,  S,  S,  S,  S,  X,  S,  X}, // $
+};*/
+
+//TABULKA S ROZŠÍŘENÍM BOOLTHEN
+const Action precedence_table[SIZE][SIZE] = {
+    // +-   !   */  +- REL  &&  ||  (   )   ID  $
+    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
+    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // !
+    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // */
+    {   S,  S,  S,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
+    {   S,  S,  S,  S,  X,  R,  R,  S,  R,  S,  R}, // REL
+    {   S,  S,  S,  S,  S,  R,  R,  S,  R,  S,  R}, // &&
+    {   S,  S,  S,  S,  S,  S,  R,  S,  R,  S,  R}, // ||
+    {   S,  S,  S,  S,  S,  S,  S,  S,  E,  S,  X}, // (
+    {   X,  X,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // )
+    {   X,  X,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // ID
+    {   S,  S,  S,  S,  S,  S,  S,  S,  X,  S,  X}, // $
 };
 
 /*
@@ -62,13 +81,19 @@ typedef enum{
 
     //Speciální znaky
     STACK_STOP,     //zarážka '<'
-    STACK_NON_TERM  //neterminál 'E'   
+    STACK_NON_TERM,  //neterminál 'E'   
+
+    //rozšíření
+    STACK_NOT = NOT,
+    STACK_AND = AND,
+    STACK_OR = OR
 }StackSymbol;
 
 typedef struct{
     StackSymbol type;
     Token token;
     DataType expr_type;
+    int label_id;
 } StackItem;
 
 typedef struct {
@@ -242,7 +267,17 @@ Symbol map_token_to_symbol(TokenType t_type, int paren_count){
         case TOKEN_DOUBLE_LITERAL:
         case TOKEN_STRING_LITERAL:
             return ID;
-
+        
+        //rozšíření BOOLTHEN
+        case TOKEN_NOT:
+            return NOT;
+        case TOKEN_AND:
+            return AND;
+        case TOKEN_OR:
+            return OR;
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+            return ID;
         default:
             return DOLLAR;
     }
@@ -291,6 +326,13 @@ void gen_push_operand(Token token){
             printf("PUSHS LF@%s\n", token.attribute.s_val);
             break;
         
+        case TOKEN_TRUE:
+            printf("PUSHS bool@true\n");
+            break;
+
+        case TOKEN_FALSE:
+            printf("PUSHS bool@false\n");
+            break;
         default:
             break;
     }
@@ -348,6 +390,7 @@ void gen_operator(TokenType op_type){
     }
 }
 
+static int logic_label_counter = 0;
 
 
 /**
@@ -367,7 +410,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
     int paren_count = 0;
     Token empty_token = {0};
 
-    StackItem init_item = {STACK_DOLLAR, empty_token, 0};
+    StackItem init_item = {STACK_DOLLAR, empty_token, 0, 0};
     
     if(!stack_push(&s, init_item)){
         stack_free(&s);
@@ -403,7 +446,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     stack_pop(&s);
                 }
 
-                StackItem stop_item = {STACK_STOP, empty_token, 0};
+                StackItem stop_item = {STACK_STOP, empty_token, 0, 0};
                 if(!stack_push(&s, stop_item)){
                     stack_free(&s);
                     return EXPR_ERR_INTERNAL;
@@ -416,7 +459,22 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     }
                 }
 
-                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
+                int current_label_id = 0;
+                if(input_symbol == AND){
+                    current_label_id = ++logic_label_counter;
+                    printf("POPS GF@$expr_op1\n");
+                    printf("PUSHS GF@$expr_op1\n");
+                    printf("JUMPIFEQ $and_end_%d GF@$expr_op1 bool@false\n", current_label_id);
+                    printf("POPS GF@$expr_op1\n");
+                }else if(input_symbol == OR){
+                    current_label_id = ++logic_label_counter;
+                    printf("POPS GF@$expr_op1\n");
+                    printf("PUSHS GF@$expr_op1\n");
+                    printf("JUMPIFEQ $or_end_%d GF@$expr_op1 bool@true\n", current_label_id);
+                    printf("POPS GF@$expr_op1\n");
+                }
+
+                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0, current_label_id};
                 if(!stack_push(&s, input_item)){
                     stack_free(&s);
                     return EXPR_ERR_INTERNAL;
@@ -481,11 +539,12 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         if(operand_token.type == TOKEN_INT_LITERAL) current_type = TYPE_INT;
                         else if(operand_token.type == TOKEN_DOUBLE_LITERAL) current_type = TYPE_DOUBLE;
                         else if(operand_token.type == TOKEN_STRING_LITERAL) current_type = TYPE_STRING;
-                         
+                        else if(operand_token.type == TOKEN_TRUE) current_type = TYPE_BOOL;
+                        else if(operand_token.type == TOKEN_FALSE) current_type = TYPE_BOOL;
                         gen_push_operand(operand_token);
                     }
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -538,7 +597,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         return EXPR_ERR_SEMANTIC; //zakázané operace typu Int + String
                     }
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -577,7 +636,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
 
                     gen_operator(operand);
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -613,7 +672,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         return EXPR_ERR_SEMANTIC; //zakázané operace typu Int < String
                     }
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -630,7 +689,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     
                     DataType result_type = handle[1].expr_type;
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, result_type, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -666,7 +725,42 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                         return EXPR_ERR_SEMANTIC; //zakázaná operace unární operátor nad String, Boolean, ...
                     }
 
-                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type};
+                    StackItem non_term = {STACK_NON_TERM, empty_token, current_type, 0};
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
+                    continue;
+                }//pravidlo E -> !E
+                else if(handle_len == 2 && handle[0].type == STACK_NON_TERM && handle[1].type == STACK_NOT){
+                    rule_matched = true;
+                    if(handle[0].expr_type != TYPE_BOOL){
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTIC;
+                    }
+                    printf("NOTS\n");
+                    StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL, 0};
+                    if(!stack_push(&s, non_term)){
+                        stack_free(&s);
+                        return EXPR_ERR_INTERNAL;
+                    }
+                    continue;
+                }//pravidlo E -> E && E (||)
+                else if (handle_len == 3 && handle[0].type == STACK_NON_TERM &&
+                        (handle[1].type == STACK_AND || handle[1].type == STACK_OR) &&
+                        handle[2].type == STACK_NON_TERM){
+                    rule_matched = true;
+                    if (handle[2].expr_type != TYPE_BOOL || handle[0].expr_type != TYPE_BOOL){
+                        stack_free(&s);
+                        return EXPR_ERR_SEMANTIC;
+                    }
+                    if(handle[1].type == STACK_AND){
+                        printf("LABEL $and_end_%d\n", handle[1].label_id);
+                    }else{
+                        printf("LABEL $or_end_%d\n", handle[1].label_id);
+                    }
+
+                    StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL, 0};
                     if(!stack_push(&s, non_term)){
                         stack_free(&s);
                         return EXPR_ERR_INTERNAL;
@@ -679,7 +773,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
                     return EXPR_ERR_SYNTAX;
                 }
 
-                StackItem non_term = {STACK_NON_TERM, empty_token, 0};
+                StackItem non_term = {STACK_NON_TERM, empty_token, 0, 0};
                 if(!stack_push(&s, non_term)){
                     stack_free(&s);
                     return EXPR_ERR_INTERNAL;
@@ -690,7 +784,7 @@ ExprResult parse_expression(SymTable *global_table, DataType *final_type, Token*
             }
 
             case E:{
-                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0};
+                StackItem input_item = {(StackSymbol)input_symbol, current_token, 0, 0};
                 if(!stack_push(&s, input_item)){
                     stack_free(&s);
                     return EXPR_ERR_INTERNAL;
@@ -1029,6 +1123,154 @@ int main(void) {
             { TOKEN_EOF, 1, {0} }
         };
         run_test("Syntakticka chyba (prazdny vyraz)", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+    // --- 8. BOOLTHEN: LITERALY, NEGACE, PRIORITY A ZKRATOVE VYHODNOCOVANI ---
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN literal: true", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN negace: !true", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN dvojita negace (prava asoc.): !!false", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_EQ, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN porovnani: true == false", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_OR, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_AND, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN priorita && nad ||: true || false && false", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+    {
+        // POZOR: uprav TOKEN_LESS podle nazvu ve vasem scanner.h (napr. TOKEN_LESS)
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
+            { TOKEN_LESS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_AND, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_EQ, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_OR, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_THEN, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN relace + && + || + then: 1 < 2 && 3 == 3 || false then", t, EXPR_OK, TYPE_BOOL, TOKEN_THEN);
+    }
+    {
+        Token t[] = {
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_LPAREN, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 2 } },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 3 } },
+            { TOKEN_EQ, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_RPAREN, 1, {0} },
+            { TOKEN_AND, 1, {0} },
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN kombinace: !(2 + 3 == 5) && !false", t, EXPR_OK, TYPE_BOOL, TOKEN_EOF);
+    }
+
+    // --- 9. BOOLTHEN: SEMANTICKE CHYBY (KOD 6) ---
+    {
+        Token t[] = {
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN semanticka chyba: !5", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_AND, 1, {0} },
+            { TOKEN_INT_LITERAL, 1, { .i_val = 1 } },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN semanticka chyba: true && 1", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_INT_LITERAL, 1, { .i_val = 5 } },
+            { TOKEN_OR, 1, {0} },
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN semanticka chyba: 5 || true", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_PLUS, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN semanticka chyba: true + false", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+    {
+        // POZOR: uprav TOKEN_LESS podle nazvu ve vasem scanner.h
+        // Operatory <, <=, >, >= jsou jen pro cisla nebo retezce, ne pro Boolean
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_LESS, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN semanticka chyba: true < false", t, EXPR_ERR_SEMANTIC, 0, 0);
+    }
+
+    // --- 10. BOOLTHEN: SYNTAKTICKE CHYBY (KOD 2) ---
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_AND, 1, {0} },
+            { TOKEN_OR, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN syntakticka chyba: true && || false", t, EXPR_ERR_SYNTAX, 0, 0);
+    }
+    {
+        Token t[] = {
+            { TOKEN_TRUE, 1, {0} },
+            { TOKEN_NOT, 1, {0} },
+            { TOKEN_FALSE, 1, {0} },
+            { TOKEN_EOF, 1, {0} }
+        };
+        run_test("BOOLTHEN syntakticka chyba: true ! false", t, EXPR_ERR_SYNTAX, 0, 0);
     }
 
     // --- SOUHRN ---

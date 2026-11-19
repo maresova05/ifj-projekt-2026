@@ -6,6 +6,15 @@
 
 static Token current; // aktuální token
 
+static void parse_statement(void); // pro volání funkcí v libovolném pořadí
+static void parse_simple_list(void);
+static void parse_simple_statement(void);
+static bool is_simple_statement_start(void);
+static bool is_statement_start(void);
+static void parse_if(void);
+static void parse_while(void);
+
+
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad
 */
@@ -57,9 +66,70 @@ static void parse_term(void){
     }
 }
 
+/**
+* @brief parsuje příkazy (pravidla 26 až 28)
+*/
 static void parse_statement(void){
-    // TODO (docasne)
-    next();
+    switch(current.type){
+        case TOKEN_IF:
+            parse_if();
+            break;
+        case TOKEN_WHILE:
+            parse_while();
+            break;
+        default:
+            if(is_statement_start()){
+                parse_simple_list();
+                expect(TOKEN_EOL,"expected end of line");
+            } else {
+                syntax_error("expected statement");
+            }
+            break;
+    }
+}
+
+// TODO, dočasné řešení pro překlad, přeskočí tokeny do konce příkazu
+static void parse_simple_statement(void){
+    while(current.type != TOKEN_EOL &&
+          current.type != TOKEN_EOF &&
+          current.type != TOKEN_SEMICOLON){
+        next();
+    }
+}
+
+/**
+* @brief parsuje příkazy, dokud v tokenech přichází příkaz -> středník -> příkaz atd.
+*/
+static void parse_simple_list(void){
+    parse_simple_statement();
+    while(current.type == TOKEN_SEMICOLON){
+        next();
+        if(is_simple_statement_start()){
+            parse_simple_statement();
+        }
+    }
+}
+
+/**
+* @brief pomocná funkce pro určení začátku jednoduchého příkazu
+* @return vrací true pokud token může příkaz začínat
+*/
+static bool is_simple_statement_start(void){
+    switch(current.type){
+        case TOKEN_IDENTIFIER:
+        case TOKEN_RETURN:
+        case TOKEN_VAL:    
+        case TOKEN_VAR:    
+        case TOKEN_PLUS:    
+        case TOKEN_MINUS:    
+        case TOKEN_INT_LITERAL:    
+        case TOKEN_DOUBLE_LITERAL:    
+        case TOKEN_STRING_LITERAL:    
+        case TOKEN_LPAREN:    
+            return true;
+        default:
+            return false;
+    }
 }
 
 /**

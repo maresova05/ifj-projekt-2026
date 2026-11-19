@@ -1,0 +1,5 @@
+# pomocné soubory Makefile
+*.o
+*.d
+# výsledný program
+/main

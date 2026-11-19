@@ -360,12 +360,67 @@ static void parse_rhs(void){
     }
 }
 
+static void parse_param(void){
+    expect(TOKEN_IDENTIFIER,"expected identifier");
+    expect(TOKEN_COLON,"expected :");
+    parse_type();
+}
+
+static void parse_params(void){
+    if(current.type == TOKEN_IDENTIFIER){
+        parse_param();
+        while(current.type == TOKEN_COMMA){
+            next();
+            parse_param();
+        }
+    }
+}
+
+static void parse_main_annot(void){
+    if (current.type == TOKEN_MAIN){
+        next();
+    if(current.type == TOKEN_EOL){
+        next();
+        }
+    }
+}
+
+static void parse_prolog(void){
+    expect(TOKEN_IMPORT,"expected import");
+    expect(TOKEN_IDENTIFIER,"expected identifier");
+    expect(TOKEN_DOT,"expected .");
+    expect(TOKEN_MUL,"expected *");
+    expect(TOKEN_EOL,"expected end of line");
+}
+
+static void parse_function(void){
+    parse_main_annot();
+    expect(TOKEN_DEF,"expected def");
+    expect(TOKEN_IDENTIFIER,"expected identifier");
+    expect(TOKEN_LPAREN,"expected (");
+    parse_params();
+    expect(TOKEN_RPAREN,"expected )");
+    expect(TOKEN_COLON,"expected :");
+    parse_type();
+    expect(TOKEN_ASSIGN,"expected =");
+    if(current.type == TOKEN_EOL){
+        parse_block();
+    } else {
+        parse_rhs();
+        expect(TOKEN_EOL,"expected end of line");
+    }
+}
+
 /**
 * @brief syntaktická analýza programu rekurzivním sestupem
 * @return vrací 0 při úspěchu, při syntaktické chybě ukončí překlad s kódem 2
 */
 int parse_program(void){
     next();
-    // gramatika 
+    parse_prolog();
+    while(current.type == TOKEN_DEF || current.type == TOKEN_MAIN){
+        parse_function();
+    }
+    expect(TOKEN_EOF,"expected end of file");
     return 0;
 }

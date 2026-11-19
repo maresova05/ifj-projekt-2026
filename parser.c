@@ -106,6 +106,35 @@ static void parse_block(void){
     expect(TOKEN_DEDENT,"expected dedent");
 }
 
+// dočasné řešení pro překlad, takto to nebude
+static void parse_expr(TokenType type){
+    while (current.type != type && current.type != TOKEN_EOF){
+        next();
+    }
+}
+
+/**
+* @brief parsuje podmíněný příkaz (pravidlo 67)
+*/
+static void parse_if(void){
+    expect(TOKEN_IF,"expected if");
+    parse_expr(TOKEN_THEN);
+    expect(TOKEN_THEN,"expected then");
+    parse_block();
+    expect(TOKEN_ELSE,"expected else");
+    parse_block();
+}
+
+/**
+* @brief parsuje cyklus (pravidlo 68)
+*/
+static void parse_while(void){
+    expect(TOKEN_WHILE,"expected while");
+    parse_expr(TOKEN_DO);
+    expect(TOKEN_DO,"expected do");
+    parse_block();
+}
+
 /**
 * @brief syntaktická analýza programu rekurzivním sestupem
 * @return vrací 0 při úspěchu, při syntaktické chybě ukončí překlad s kódem 2

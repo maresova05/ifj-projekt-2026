@@ -14,6 +14,7 @@ static bool is_statement_start(void);
 static void parse_if(void);
 static void parse_while(void);
 static void skip_to_end(void);
+static void parse_rhs(void);
 
 
 /**
@@ -47,7 +48,23 @@ static void expect(TokenType type, const char *msg){
 * @brief parsuje typ (pravidlo 12)
 */
 static void parse_type(void){
-    expect(TOKEN_IDENTIFIER,"expected identifier");
+    switch(current.type){
+        case TOKEN_KW_INT:
+            expect(TOKEN_KW_INT,"expected int");
+            break;
+        case TOKEN_KW_DOUBLE:
+            expect(TOKEN_KW_DOUBLE,"expected double");
+            break;
+        case TOKEN_KW_STRING:
+            expect(TOKEN_KW_STRING,"expected string");
+            break;
+        case TOKEN_KW_UNIT:
+            expect(TOKEN_KW_UNIT,"expected unit");
+            break;
+        default:
+            syntax_error("expected type");
+            break;
+    }
 }
 
 
@@ -89,20 +106,35 @@ static void parse_statement(void){
     }
 }
 
-// dočasné přeskoky pro překlad
 static void parse_var_def(void){
-    skip_to_end();
+    next();
+    expect(TOKEN_IDENTIFIER,"expected identifier");
+    expect(TOKEN_ASSIGN,"expected =");
+    parse_rhs();
 }
 
 static void parse_return(void){
-    skip_to_end();
+    expect(TOKEN_RETURN,"expected return");
+    parse_rhs();
 }
 static void parse_assign(void){
-    skip_to_end();
+    expect(TOKEN_ASSIGN,"expected =");
+    parse_rhs();
 }
 
 static void parse_call(void){
-    skip_to_end();
+    expect(TOKEN_LPAREN,"expected (");
+    if(current.type == TOKEN_IDENTIFIER ||
+          current.type == TOKEN_INT_LITERAL ||
+          current.type == TOKEN_DOUBLE_LITERAL ||
+          current.type == TOKEN_STRING_LITERAL){
+            parse_term();
+            while(current.type == TOKEN_COMMA){
+                next();
+                parse_term();
+            }
+          }
+    expect(TOKEN_RPAREN,"expected )");
 }
 
 static void skip_to_end(void){
@@ -158,7 +190,11 @@ static void parse_simple_statement(void){
             next();
             switch(current.type){
                 case TOKEN_ASSIGN:
+                    parse_assign();
+                    break;
                 case TOKEN_LPAREN:
+                    parse_call();
+                    break;
                 case TOKEN_PLUS:
                 case TOKEN_MINUS:
                 case TOKEN_MUL:
@@ -288,6 +324,31 @@ static void parse_while(void){
     parse_expr(TOKEN_DO);
     expect(TOKEN_DO,"expected do");
     parse_block();
+}
+
+static void parse_rhs(void){
+    switch(current.type){
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+        case TOKEN_INT_LITERAL:
+        case TOKEN_DOUBLE_LITERAL:
+        case TOKEN_STRING_LITERAL:
+        case TOKEN_LPAREN:
+            skip_to_end();
+            break;
+        case TOKEN_IDENTIFIER:
+            next();
+            if (is_binary_op()){
+                skip_to_end();
+            } else if(current.type == TOKEN_LPAREN){
+                parse_call();
+            } else if(current.type == TOKEN_SEMICOLON || current.type == TOKEN_EOL){
+                // nothing
+            }
+            break;
+        default:
+            syntax_error("expected something");
+    }
 }
 
 /**

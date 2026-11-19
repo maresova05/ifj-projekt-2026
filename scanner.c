@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdbool.h>
 #include "scanner.h"
 #include "dstring.h"
 
@@ -24,18 +25,42 @@ typedef enum {
     STATE_AND,
     STATE_AT,
     STATE_DOT,
+    STATE_ZERO,
+    STATE_IN_NUMBER_UNDERSCORE,
+    STATE_IN_DOUBLE_START,
+    STATE_IN_DOUBLE_UNDERSCORE,
+    STATE_IN_EXP_START,
+    STATE_IN_EXP_SIGN,
+    STATE_IN_EXP,
+    STATE_IN_EXP_UNDERSCORE,
 
 
 }LexerState;
+
 static int indent_stack[100] = {0}; //zásobník
 static int top_idx = 0; //vrchol zásobníku
 static int pending_dedents = 0;
 
 static bool is_line_start = true;
+static bool counting_indent = true;
+static bool saw_invalid_indent = false;
+static bool line_has_token = false;
+static bool in_paren_continuation = false;
+
 static int current_spaces = 0;
+static int logical_line_indent = 0;
+static int paren_depth = 0;
+static int current_line = 1;
 
 static bool has_buffered_token = false;
 static Token buffered_token;
+
+static void free_token_if_allocated(Token *token){
+    if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_STRING_LITERAL){
+        free(token->attribute.s_val);
+        token->attribute.s_val = NULL;
+    }
+}
 
 
 
@@ -78,7 +103,7 @@ int get_raw_token(Token *token){
     int c;
     dynamic_string_t word;
 
-    token->line = 1;
+    //token->line = 1;
 
     while (1){
         c = getchar();
@@ -88,22 +113,54 @@ int get_raw_token(Token *token){
             case STATE_START:
                 if (c == EOF){
                     token->type = TOKEN_EOF;
+                    token->line = current_line;
                     return 0;
                 }else if (c == '\n'){
+                    if (paren_depth > 0){
+                        current_line++;
+                        in_paren_continuation = true;
+                        counting_indent = true;
+                        current_spaces = 0;
+                        saw_invalid_indent = false;
+                        continue;
+                    }
+                    if (line_has_token){
+                        token->type = TOKEN_EOL;
+                        token->line = current_line;
+                        current_line++;
+                        is_line_start = true;
+                        counting_indent = true;
+                        current_spaces = 0;
+                        saw_invalid_indent = false;
+                        line_has_token = false;
+                        return 0;
+                    }
+                    current_line++;
                     is_line_start = true;
+                    counting_indent = true;
                     current_spaces = 0;
+                    saw_invalid_indent = false;
                     continue;
                 }else if (c == ' '){
-                    if (is_line_start) current_spaces++;
+                    if ((is_line_start || in_paren_continuation) && counting_indent){
+                        current_spaces++;
+                    } 
                     continue;
                 }else if (c == '\t'){
-                    if (is_line_start) return 1; //lexikální chyba (tabulátor je pro odsazování zakázaný)
+                    if ((is_line_start || in_paren_continuation) && counting_indent){
+                        saw_invalid_indent = true;
+                    }
                     continue;
-                }else if (isspace(c)){
+                }else if (c == '\r'){
                     continue;
                 }
-                
-                else if (c == '+'){
+                /*
+                else if (isspace(c)){
+                    continue;
+                }
+                */
+                token->line = current_line;
+                if (c == '+'){
                     token->type = TOKEN_PLUS;
                     return 0;
                 }else if (c == '-'){
@@ -114,14 +171,21 @@ int get_raw_token(Token *token){
                     return 0;
                 }else if (c == '('){
                     token->type = TOKEN_LPAREN;
+                    paren_depth++;
+                    return 0;
                 }else if (c == ')'){
                     token->type = TOKEN_RPAREN;
+                    if (paren_depth > 0) paren_depth--;
+                    return 0;
                 }else if (c == ':'){
                     token->type = TOKEN_COLON;
+                    return 0;
                 }else if (c == ','){
                     token->type = TOKEN_COMMA;
+                    return 0;
                 }else if (c == ';'){
                     token->type = TOKEN_SEMICOLON;
+                    return 0;
                 }else if (c == '/'){
                     state = STATE_SLASH;
                 }else if (c == '&'){
@@ -160,18 +224,33 @@ int get_raw_token(Token *token){
                     }
 
 
+                }else if (c == '0'){
+                    if (!dstring_init(&word)){
+                        return 99; //interní chyba
+                    }
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
+                    state = STATE_ZERO;
                 }else if (isdigit(c)){
                     if (!dstring_init(&word)){
                         return 99; //interní chyba
                     }
-                    dstring_append(&word, c);
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
                     state = STATE_IN_NUMBER;
                 }else if (isalpha(c) || c == '_'){
                     if (!dstring_init(&word)){
                         return 99; //interní chyba
                     }
 
-                    dstring_append(&word, c);
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
                     
                     state = STATE_IN_WORD;
                 }else {
@@ -250,13 +329,38 @@ int get_raw_token(Token *token){
                         return 99; //interní chyba
                     }
                 //převod na double
+                }else if (c == '_'){
+                    state = STATE_IN_NUMBER_UNDERSCORE;
                 }else if (c == '.'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
                         return 99; //interní chyba
                     }
-                    state = STATE_IN_DOUBLE;
-                //ukončení čísla
+                    state = STATE_IN_DOUBLE_START;
+                }else if (c == 'e' || c == 'E'){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP_START;
+                }
+                /*
+                else if (c == 'd' || c == 'D'){
+                    int next = getchar();
+                    if (isalnum(next) || next == '_'){
+                        dstring_free(&word);
+                        return 1;
+                    }
+                    ungetc(next, stdin);
+                    token->type = TOKEN_DOUBLE_LITERAL;
+                    token->attribute.d_val = strtod(word.str, NULL);
+                    dstring_free(&word);
+                    return 0;
+                }
+                */
+                else if (isalnum(c)){
+                    dstring_free(&word);
+                    return 1;
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_INT_LITERAL;
@@ -267,7 +371,33 @@ int get_raw_token(Token *token){
                     return 0;
                 }
             break;
-                
+
+            case STATE_IN_NUMBER_UNDERSCORE:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_NUMBER;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
+            case STATE_IN_DOUBLE_START:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_DOUBLE;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
 
             case STATE_IN_DOUBLE:
                 if (isdigit(c)){
@@ -275,6 +405,28 @@ int get_raw_token(Token *token){
                         dstring_free(&word);
                         return 99; //interní chyba
                     }
+                }else if (c == '_'){
+                    state = STATE_IN_DOUBLE_UNDERSCORE;
+                }else if (c == 'e' || c == 'E'){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP_START;
+                }else if (c == 'd' || c == 'D'){
+                    int next = getchar();
+                    if (isalnum(next) || next == '_'){
+                        dstring_free(&word);
+                        return 1;
+                    }
+                    ungetc(next, stdin);
+                    token->type = TOKEN_DOUBLE_LITERAL;
+                    token->attribute.d_val = strtod(word.str, NULL);
+                    dstring_free(&word);
+                    return 0;
+                }else if (isalpha(c)){
+                    dstring_free(&word);
+                    return 1;
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -284,7 +436,98 @@ int get_raw_token(Token *token){
                     dstring_free(&word);
                     return 0;
                 }
+
             break;
+
+            case STATE_IN_DOUBLE_UNDERSCORE:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_DOUBLE;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
+            case STATE_IN_EXP_START:
+                if (c == '+' || c == '-'){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP_SIGN;
+                }else if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
+            case STATE_IN_EXP_SIGN:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
+            case STATE_IN_EXP:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                }else if (c == '_'){
+                    state = STATE_IN_EXP_UNDERSCORE;
+                }else if (c == 'd' || c == 'D'){
+                     int next = getchar();
+                    if (isalnum(next) || next == '_'){
+                        dstring_free(&word);
+                        return 1;
+                    }
+                    ungetc(next, stdin);
+                    token->type = TOKEN_DOUBLE_LITERAL;
+                    token->attribute.d_val = strtod(word.str, NULL);
+                    dstring_free(&word);
+                    return 0;
+                }else if (isalpha(c)){
+                    dstring_free(&word);
+                    return 1;
+                }else{
+                    ungetc(c, stdin);
+                    token->type = TOKEN_DOUBLE_LITERAL;
+                    token->attribute.d_val = strtod(word.str, NULL);
+                    dstring_free(&word);
+                    return 0;
+                }
+            break;
+
+            case STATE_IN_EXP_UNDERSCORE:
+                if (isdigit(c)){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99; //interní chyba
+                    }
+                    state = STATE_IN_EXP;
+                }else{
+                    dstring_free(&word);
+                    return 1;
+                }
+            break;
+
 
             case STATE_SLASH:
                 //řádkový komentář
@@ -300,6 +543,7 @@ int get_raw_token(Token *token){
                 //začátek blokového komentáře
                 }else if (c == '*'){
                     int nest_level = 1; //počítadlo vnoření blokových komentářů
+                    bool has_newline = false;
 
                     while (nest_level > 0){
                         c = getchar();
@@ -308,23 +552,44 @@ int get_raw_token(Token *token){
                             return 1; //lexikální chyba (konec souboru byl nalezen dřív než konec řádku)
                         }
                         //vnoření blokového komentáře
-                        if (c == '/'){
+                        if (c == '\n'){
+                            current_line++;
+                            has_newline = true;
+                        }else if (c == '/'){
                             int c_next = getchar();
                             if (c_next == '*'){
                                 nest_level++;
-                            }else{
+                            }else if (c_next != EOF){
                                 ungetc(c_next, stdin);
                             }
                         }else if (c == '*'){
                             int c_next = getchar();
                             if (c_next == '/'){
                                 nest_level--;
-                            }else{
+                            }else if (c_next != EOF){
                                 ungetc(c_next, stdin);
                             }
                         }
-
                     }
+                    if (has_newline){
+                        while (1){
+                            c = getchar();
+                            if (c == ' ' || c == '\t' || c == '\r'){
+                                continue;
+                            }else if (c == '\n') {
+                                ungetc(c, stdin);
+                                break;
+                            }else if (c == EOF) {
+                                break;
+                            }else{
+                                return 1;
+                            }
+                        }
+                        
+                    }else if (is_line_start || in_paren_continuation) {
+                        counting_indent = false;
+                    }
+
                     state = STATE_START;
                 //dělení
                 }else{
@@ -358,15 +623,30 @@ int get_raw_token(Token *token){
 
             case STATE_IN_STRING_ESCAPE:
                 if (c == '"'){
-                    if (!dstring_append(&word, '"')) return 99;
+                    if (!dstring_append(&word, '"')){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }else if (c == '\\'){
-                    if (!dstring_append(&word, '\\')) return 99;
+                    if (!dstring_append(&word, '\\')){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }else if (c == 'n'){
-                    if (!dstring_append(&word, '\n')) return 99;
+                    if (!dstring_append(&word, '\n')){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }else if (c == 'r'){
-                    if (!dstring_append(&word, '\r')) return 99;
+                    if (!dstring_append(&word, '\r')){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }else if (c == 't'){
-                    if (!dstring_append(&word, '\t')) return 99;
+                    if (!dstring_append(&word, '\t')){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }else{
                     //ostatní escape sekvence jsou neplatné
                     dstring_free(&word);
@@ -383,7 +663,11 @@ int get_raw_token(Token *token){
                 }else if (c == '"'){
                     state = STATE_MULTILINE_1;
                 }else{
-                    if (!dstring_append(&word, c)) return 99;
+                    if (c == '\n') current_line++;
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
                 }
             break;
 
@@ -394,8 +678,11 @@ int get_raw_token(Token *token){
                 }else if (c == '"'){
                     state = STATE_MULTILINE_2;
                 }else{
-                    if (!dstring_append(&word, '"')) return 99;
-                    if (!dstring_append(&word, c)) return 99;
+                    if (c == '\n') current_line++;
+                    if (!dstring_append(&word, '"') || !dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
                     state = STATE_IN_MULTILINE_STRING;
                 }
             break;
@@ -405,13 +692,26 @@ int get_raw_token(Token *token){
                     dstring_free(&word);
                     return 1;
                 }else if (c == '"'){
+                    int next = getchar();
+                    while (next == '"'){
+                        if (!dstring_append(&word, '"')){
+                            dstring_free(&word);
+                            return 99;
+                        }
+                        next = getchar();
+                    }
+                    if (next != EOF){
+                        ungetc(next, stdin);
+                    }
                     token->type = TOKEN_STRING_LITERAL;
                     token->attribute.s_val = word.str;
                     return 0;
                 }else{
-                    if (!dstring_append(&word, '"')) return 99;
-                    if (!dstring_append(&word, '"')) return 99;
-                    if (!dstring_append(&word, c)) return 99;
+                    if (c == '\n') current_line++;
+                    if (!dstring_append(&word, '"') || !dstring_append(&word, '"') || !dstring_append(&word, c)) {
+                        dstring_free(&word);
+                        return 99;
+                    }
                     state = STATE_IN_MULTILINE_STRING;
                 }
             break;
@@ -461,6 +761,46 @@ int get_raw_token(Token *token){
                 }
             break;
 
+            case STATE_ZERO:
+                if (c == '.'){
+                     if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
+                    state = STATE_IN_DOUBLE_START;
+                }else if (c == 'e' || c == 'E'){
+                    if (!dstring_append(&word, c)){
+                        dstring_free(&word);
+                        return 99;
+                    }
+                    state = STATE_IN_EXP_START;
+                }
+                /*
+                else if (c == 'd' || c == 'D'){
+                    int next = getchar();
+                    if (isalnum(next) || next == '_'){
+                        dstring_free(&word);
+                        return 1;
+                    }
+                    ungetc(next, stdin);
+                    token->type = TOKEN_DOUBLE_LITERAL;
+                    token->attribute.d_val = 0.0;
+                    dstring_free(&word);
+                    return 0;
+                }
+                */
+                else if (isalnum(c) || c == '_'){
+                    dstring_free(&word);
+                    return 1;
+                }else{
+                    ungetc(c, stdin);
+                    token->type = TOKEN_INT_LITERAL;
+                    token->attribute.i_val = 0;
+                    dstring_free(&word);
+                    return 0;
+                }
+            break;
+
         }
     }
 }
@@ -469,6 +809,7 @@ int get_next_token(Token *token){
     if (pending_dedents > 0){
         pending_dedents--;
         token->type = TOKEN_DEDENT;
+        token->line = buffered_token.line;
         return 0;
     }
 
@@ -483,15 +824,37 @@ int get_next_token(Token *token){
         return result;
     }
 
+    if (buffered_token.type == TOKEN_EOL){
+        *token = buffered_token;
+        return 0;
+    }
+
     if (buffered_token.type == TOKEN_EOF){
         if (top_idx > 0){
-            pending_dedents = top_idx;
+            pending_dedents = top_idx - 1;
             top_idx = 0;
-
             has_buffered_token = true;
-            pending_dedents--;
             token->type = TOKEN_DEDENT;
+            token->line = buffered_token.line;
             return 0;
+        }
+        *token = buffered_token;
+        return 0;
+    }
+
+    line_has_token = true;
+
+    if (saw_invalid_indent){
+        free_token_if_allocated(&buffered_token);
+        return 1;
+    }
+
+    if (in_paren_continuation){
+        in_paren_continuation = false;
+        bool bad_indent = (buffered_token.type == TOKEN_RPAREN) ? (current_spaces < logical_line_indent) : (current_spaces<= logical_line_indent);
+        if (bad_indent) {
+            free_token_if_allocated(&buffered_token);
+            return 1;
         }
         *token = buffered_token;
         return 0;
@@ -499,13 +862,19 @@ int get_next_token(Token *token){
 
     if (is_line_start){
         is_line_start = false;
+        logical_line_indent = current_spaces;
 
         if (current_spaces > indent_stack[top_idx]){
+            if (top_idx >= 99){
+                free_token_if_allocated(&buffered_token);
+                return 99;
+            }
             top_idx++;
             indent_stack[top_idx] = current_spaces;
 
             has_buffered_token = true;
             token->type = TOKEN_INDENT;
+            token->line = buffered_token.line;
             return 0;
         }else if (current_spaces < indent_stack[top_idx]){
             int dedent_count = 0;
@@ -515,6 +884,7 @@ int get_next_token(Token *token){
             }
 
             if (current_spaces != indent_stack[top_idx]){
+                free_token_if_allocated(&buffered_token);
                 return 1; //lexikální chyba
             }
 
@@ -523,6 +893,7 @@ int get_next_token(Token *token){
                 pending_dedents = dedent_count - 1;
 
                 token->type = TOKEN_DEDENT;
+                token->line = buffered_token.line;
                 return 0;
             }
         }
@@ -544,4 +915,11 @@ void scanner_reset(void) {
     is_line_start = true;
     current_spaces = 0;
     has_buffered_token = false;
+    counting_indent = true;
+    saw_invalid_indent = false;
+    line_has_token = false;
+    in_paren_continuation = false;
+    logical_line_indent = 0;
+    paren_depth = 0;
+    current_line = 1;
 }

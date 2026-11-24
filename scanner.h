@@ -1,4 +1,4 @@
-#ifdef SCANNER_H
+#ifndef SCANNER_H
 #define SCANNER_H
 
 
@@ -15,7 +15,13 @@ typedef enum {
     TOKEN_DOUBLE_LITERAL, //např. 3.14
     TOKEN_STRING_LITERAL, //např. "Jak se mas"
 
-    //3. Klíčová slova
+    //3. Datové typy
+    TOKEN_KW_INT,
+    TOKEN_KW_DOUBLE,
+    TOKEN_KW_STRING,
+    TOKEN_KW_UNIT,
+
+    //4. Klíčová slova
     TOKEN_DEF,
     TOKEN_DO,
     TOKEN_IF,
@@ -25,13 +31,14 @@ typedef enum {
     TOKEN_RETURN,
     TOKEN_VAL,
     TOKEN_VAR,
-    WHILE,
+    TOKEN_WHILE,
 
-    //3,5. Klíčová slova (rozšíření)
+    //4,5. Klíčová slova a datový typ (rozšíření)
     TOKEN_TRUE, //BOOLTHEN
     TOKEN_FALSE, //BOOLTHEN
+    TOKEN_KW_BOOLEAN,
 
-    //4. Operátory a speciální znaky
+    //5. Operátory a speciální znaky
     TOKEN_PLUS, // +
     TOKEN_MINUS, // -
     TOKEN_MUL, // *
@@ -44,11 +51,14 @@ typedef enum {
     TOKEN_GREATER, // >
     TOKEN_GREATER_EQ, // >=
     TOKEN_LPAREN, // (
-    TOKEN_RPAERN, // )
+    TOKEN_RPAREN, // )
     TOKEN_COLON, // :
     TOKEN_COMMA, // ,
+    TOKEN_SEMICOLON,
+    TOKEN_DOT,
+    TOKEN_MAIN,
     
-    //4,5. Operátory a speciální znaky (rozšíření)
+    //5,5. Operátory a speciální znaky (rozšíření)
     TOKEN_AND, // && (BOOLTHEN)
     TOKEN_OR, // || (BOOLTHEN)
     TOKEN_NOT // ! (BOOLTHEN)
@@ -68,7 +78,7 @@ typedef struct {
 } Token;
 
 int get_next_token(Token *token);
-
+void scanner_reset(void);
 
 
 

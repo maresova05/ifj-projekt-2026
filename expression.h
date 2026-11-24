@@ -9,6 +9,7 @@ typedef enum {
     EXPR_ERR_LEX = 1,       //Lexikální chyba
     EXPR_ERR_SYNTAX = 2,    //Syntaktická chyba
     EXPR_ERR_UNDEF = 3,    //Nedefinovaná proměnná        
+    EXPR_ERR_PARAM = 5,     //Špatný počet/typ argumentů
     EXPR_ERR_SEMANTIC = 6,   //Sémantická chyba
     EXPR_ERR_INTERNAL = 99  //Ostatní chyby (selhání malloc, ...)
 }ExprResult;

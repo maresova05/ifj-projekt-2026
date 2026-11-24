@@ -4,6 +4,8 @@
 #include "parser.h"
 #include "scanner.h"
 #include "error.h"
+#include "expression.h"
+#include "gen_control.h"
 
 static Token current; // aktuální token
 
@@ -17,7 +19,6 @@ static void parse_if(void);
 static void parse_while(void);
 static void skip_to_end(void);
 static void parse_rhs(void);
-
 
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad
@@ -329,35 +330,51 @@ static void parse_block(void){
     expect(TOKEN_DEDENT,"expected dedent");
 }
 
-/**
-* @brief přeskočí výraz do zadaného tokenu
-*/
-static void parse_expr(TokenType type){ // TODO vyrazy
-    while (current.type != type && current.type != TOKEN_EOF){
-        next();
+static void parse_condition(void){
+    DataType type;
+    Token tok = {0};
+    ExprResult res = parse_expression(NULL, &type, &tok); // TODO SymTableStack
+    if(res != EXPR_OK){
+        report_error((Error_code)res,current.line);
     }
+    if(type != TYPE_BOOL){
+        report_error(ERR_TYPE,current.line);
+    }
+    current = tok;
 }
 
 /**
 * @brief parsuje podmíněný příkaz (pravidlo 67)
 */
 static void parse_if(void){
-    expect(TOKEN_IF,"expected if");
-    parse_expr(TOKEN_THEN);
-    expect(TOKEN_THEN,"expected then");
-    parse_block();
-    expect(TOKEN_ELSE,"expected else");
-    parse_block();
+    int id = gen_new_label_id();
+    if(current.type != TOKEN_IF){
+        syntax_error("expected if");
+    }
+        parse_condition();
+        expect(TOKEN_THEN,"expected then");
+        gen_if_start(id);
+        parse_block();
+        expect(TOKEN_ELSE,"expected else");
+        gen_if_else(id);
+        parse_block();
+        gen_if_end(id);
 }
 
 /**
 * @brief parsuje cyklus (pravidlo 68)
 */
 static void parse_while(void){
-    expect(TOKEN_WHILE,"expected while");
-    parse_expr(TOKEN_DO);
+    int id = gen_new_label_id();
+    if(current.type != TOKEN_WHILE){
+        syntax_error("expected while");
+    }
+    gen_while_start(id);
+    parse_condition();
     expect(TOKEN_DO,"expected do");
+    gen_while_cond(id);
     parse_block();
+    gen_while_end(id);
 }
 
 /**

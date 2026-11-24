@@ -6,7 +6,8 @@
 
 static Token current; // aktuální token
 
-static void parse_statement(void); // pro volání funkcí v libovolném pořadí
+// pro volání funkcí v libovolném pořadí
+static void parse_statement(void);
 static void parse_simple_list(void);
 static void parse_simple_statement(void);
 static bool is_simple_statement_start(void);
@@ -106,6 +107,9 @@ static void parse_statement(void){
     }
 }
 
+/**
+* @brief parsuje definici proměnné val/var
+*/
 static void parse_var_def(void){
     next();
     expect(TOKEN_IDENTIFIER,"expected identifier");
@@ -117,6 +121,9 @@ static void parse_var_def(void){
     parse_rhs();
 }
 
+/**
+* @brief parsuje return s volitelnou hodnotou
+*/
 static void parse_return(void){
     expect(TOKEN_RETURN,"expected return");
     if(current.type == TOKEN_EOL || current.type == TOKEN_SEMICOLON){
@@ -124,11 +131,18 @@ static void parse_return(void){
     }
     parse_rhs();
 }
+
+/**
+* @brief parsuje přiřazení 
+*/
 static void parse_assign(void){
     expect(TOKEN_ASSIGN,"expected =");
     parse_rhs();
 }
 
+/**
+* @brief parsuje volání funkce a seznam argumentů
+*/
 static void parse_call(void){
     expect(TOKEN_LPAREN,"expected (");
     if(current.type == TOKEN_IDENTIFIER ||
@@ -144,7 +158,10 @@ static void parse_call(void){
     expect(TOKEN_RPAREN,"expected )");
 }
 
-static void skip_to_end(void){
+/**
+* @brief přeskočí výraz do EOL nebo středníku
+*/
+static void skip_to_end(void){ // TODO vyrazy
     while(current.type != TOKEN_EOL &&
           current.type != TOKEN_EOF &&
           current.type != TOKEN_SEMICOLON){
@@ -304,8 +321,10 @@ static void parse_block(void){
     expect(TOKEN_DEDENT,"expected dedent");
 }
 
-// dočasné řešení pro překlad, takto to nebude
-static void parse_expr(TokenType type){
+/**
+* @brief přeskočí výraz do zadaného tokenu
+*/
+static void parse_expr(TokenType type){ // TODO vyrazy
     while (current.type != type && current.type != TOKEN_EOF){
         next();
     }
@@ -333,7 +352,10 @@ static void parse_while(void){
     parse_block();
 }
 
-static void parse_rhs(void){
+/**
+* @brief parsuje pravou stranu přiřazení, výrazy zatím přeskakuje
+*/
+static void parse_rhs(void){ // TODO vyrazy
     switch(current.type){
         case TOKEN_PLUS:
         case TOKEN_MINUS:
@@ -360,12 +382,18 @@ static void parse_rhs(void){
     }
 }
 
+/**
+* @brief parsuje parametr
+*/
 static void parse_param(void){
     expect(TOKEN_IDENTIFIER,"expected identifier");
     expect(TOKEN_COLON,"expected :");
     parse_type();
 }
 
+/**
+* @brief parsuje seznam parametrů
+*/
 static void parse_params(void){
     if(current.type == TOKEN_IDENTIFIER){
         parse_param();
@@ -376,15 +404,21 @@ static void parse_params(void){
     }
 }
 
+/**
+* @brief parsuje anotaci @main 
+*/
 static void parse_main_annot(void){
     if (current.type == TOKEN_MAIN){
         next();
-    if(current.type == TOKEN_EOL){
-        next();
+        if(current.type == TOKEN_EOL){
+            next();
         }
     }
 }
 
+/**
+* @brief parsuje úvodní import
+*/
 static void parse_prolog(void){
     expect(TOKEN_IMPORT,"expected import");
     expect(TOKEN_IDENTIFIER,"expected identifier");
@@ -393,6 +427,9 @@ static void parse_prolog(void){
     expect(TOKEN_EOL,"expected end of line");
 }
 
+/**
+* @brief parsuje definici funkce včetně těla
+*/
 static void parse_function(void){
     parse_main_annot();
     expect(TOKEN_DEF,"expected def");

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "parser.h"
 #include "scanner.h"
+#include "error.h"
 
 static Token current; // aktuální token
 
@@ -23,14 +24,21 @@ static void parse_rhs(void);
 */
 static void syntax_error(const char *msg){
     fprintf(stderr,"Syntax error on line %d: %s\n",current.line,msg);
-    exit(2);
+    report_error(ERR_SYNTAX, 0);
 }
 
 /**
 * @brief načte od lexeru další token 
 */
 static void next(void){
-    get_next_token(&current);
+    int rc = get_next_token(&current);
+    if(rc == 1){
+        report_error(ERR_LEXICAL, current.line);
+    } else if(rc == 0){
+        // nothing
+    } else {
+        report_error(ERR_INTERNAL,current.line);
+    }
 }
 
 /**

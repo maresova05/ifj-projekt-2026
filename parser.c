@@ -486,6 +486,7 @@ static void parse_prolog(void){
 static void parse_function(void){
     parse_main_annot();
     expect(TOKEN_DEF,"expected def");
+    char *name = current.attribute.s_val;
     expect(TOKEN_IDENTIFIER,"expected identifier");
     expect(TOKEN_LPAREN,"expected (");
     parse_params();
@@ -493,12 +494,14 @@ static void parse_function(void){
     expect(TOKEN_COLON,"expected :");
     parse_type();
     expect(TOKEN_ASSIGN,"expected =");
+    gen_func_start(name);
     if(current.type == TOKEN_EOL){
         parse_block();
     } else {
         parse_rhs();
         expect(TOKEN_EOL,"expected end of line");
     }
+    gen_func_end();
 }
 
 /**

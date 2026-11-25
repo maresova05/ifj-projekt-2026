@@ -41,8 +41,8 @@ static DataType parse_expr_value(void);
 * @brief ohlásí syntaktickou chybu a ukončí překlad
 */
 static void syntax_error(const char *msg){
+    fprintf(stderr,"%s\n",msg);
     report_error(ERR_SYNTAX, current.line);
-    fprintf(stderr,":%s\n",msg);
 }
 
 /**
@@ -476,14 +476,18 @@ static void parse_params(void){
 
 /**
 * @brief parsuje anotaci @main 
+* @return vrací true nebo false
 */
-static void parse_main_annot(void){
+static bool parse_main_annot(void){
+    bool is_main = false;
     if (current.type == TOKEN_MAIN){
+        is_main = true;
         next();
         if(current.type == TOKEN_EOL){
             next();
         }
     }
+    return is_main;
 }
 
 /**
@@ -501,7 +505,7 @@ static void parse_prolog(void){
 * @brief parsuje definici funkce včetně těla
 */
 static void parse_function(void){
-    parse_main_annot();
+    bool is_main = parse_main_annot();
     expect(TOKEN_DEF,"expected def");
     char *name = current.attribute.s_val;
     expect(TOKEN_IDENTIFIER,"expected identifier");

@@ -6,8 +6,16 @@
 #include "error.h"
 #include "expression.h"
 #include "gen_control.h"
+#include "symtable.h"
 
 static Token current; // aktuální token
+
+// Napojení na tabulku symbolů
+static SymTableStack symstack;
+#define MAX_PARAMS 32
+static char *pnames[MAX_PARAMS];
+static DataType ptypes[MAX_PARAMS];
+static int pcount;
 
 // TODO: nahradit funkcemi
 static void sem_var_def(const char *name, bool is_mutable, DataType declared, DataType expr_type){
@@ -347,16 +355,18 @@ static void parse_statements(void){
 * @brief parsuje blok, uvnitř cyklus příkazů, (pravidlo 22)
 */
 static void parse_block(void){
+    symtable_stack_push(&symstack);
     expect(TOKEN_EOL,"expected end of line");
     expect(TOKEN_INDENT,"expected indent");
     parse_statements();
     expect(TOKEN_DEDENT,"expected dedent");
+    symtable_stack_pop(&symstack);
 }
 
 static DataType parse_expr_value(void){
     DataType type = TYPE_UNDEFINED;
     Token tok = {0};
-    ExprResult res = parse_expression(NULL, &type, &tok); // TODO SymTableStack
+    ExprResult res = parse_expression(&symstack, &type, &tok);
     if(res != EXPR_OK){
         report_error((Error_code)res,current.line);
     }
@@ -439,23 +449,30 @@ static void parse_rhs(void){ // TODO vyrazy
 * @brief parsuje parametr
 */
 static void parse_param(void){
+    if(pcount >= MAX_PARAMS){
+        syntax_error("too many parameters");
+    }
+    pnames[pcount] = current.attribute.s_val;
     expect(TOKEN_IDENTIFIER,"expected identifier");
     expect(TOKEN_COLON,"expected :");
-    parse_type();
+    ptypes[pcount] = parse_type();
+    pcount++;
 }
 
 /**
 * @brief parsuje seznam parametrů
 */
 static void parse_params(void){
-    if(current.type == TOKEN_IDENTIFIER){
-        parse_param();
-        while(current.type == TOKEN_COMMA){
-            next();
-            parse_param();
-        }
+    pcount = 0;
+    if(current.type == TOKEN_RPAREN){
+        return;
     }
-}
+    parse_param();
+    while(current.type == TOKEN_COMMA){
+        expect(TOKEN_COMMA,"expected ,");
+        parse_param();
+    }
+    }
 
 /**
 * @brief parsuje anotaci @main 
@@ -509,6 +526,13 @@ static void parse_function(void){
 * @return vrací 0 při úspěchu, při syntaktické chybě ukončí překlad s kódem 2
 */
 int parse_program(void){
+    symtable_stack_init(&symstack);
+    if(symtable_stack_push(&symstack) != SYMTABLE_OK){
+        report_error(ERR_INTERNAL, 0);
+    }
+    if(symtable_init_builtins(&symstack.top->table) != SYMTABLE_OK){
+        report_error(ERR_INTERNAL,0);
+    }
     next();
     parse_prolog();
     while(current.type == TOKEN_DEF || current.type == TOKEN_MAIN){

@@ -205,7 +205,7 @@ int get_raw_token(Token *token){
                 }else if (c == '>'){
                     state = STATE_GREATER;
                 }else if (c == '"'){
-                    if (!dstring_init(&word)) return 99;
+                    if (!dstring_init(&word)) report_error(ERR_INTERNAL, current_line);
 
                     int c2 = getchar();
                     if (c2 == '"'){
@@ -226,35 +226,35 @@ int get_raw_token(Token *token){
 
                 }else if (c == '0'){
                     if (!dstring_init(&word)){
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_ZERO;
                 }else if (isdigit(c)){
                     if (!dstring_init(&word)){
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_NUMBER;
                 }else if (isalpha(c) || c == '_'){
                     if (!dstring_init(&word)){
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
 
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     
                     state = STATE_IN_WORD;
                 }else {
-                    return 1; //lexikální chyba
+                    report_error(ERR_LEXICAL, current_line); //lexikální chyba
                 }
 
             break;
@@ -263,14 +263,14 @@ int get_raw_token(Token *token){
                 if (isalnum(c) || c == '_'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                 }else{
                     ungetc(c, stdin);
 
                     if (strcmp(word.str, "_") == 0){
                         dstring_free(&word);
-                        return 1; //lexikální chyba
+                        report_error(ERR_LEXICAL, current_line); //lexikální chyba
                     }
 
                     token->type = resolve_keyword(word.str);
@@ -326,7 +326,7 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                 //převod na double
                 }else if (c == '_'){
@@ -334,13 +334,13 @@ int get_raw_token(Token *token){
                 }else if (c == '.'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_DOUBLE_START;
                 }else if (c == 'e' || c == 'E'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP_START;
                 }
@@ -349,7 +349,7 @@ int get_raw_token(Token *token){
                     int next = getchar();
                     if (isalnum(next) || next == '_'){
                         dstring_free(&word);
-                        return 1;
+                        report_error(ERR_LEXICAL, current_line);
                     }
                     ungetc(next, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -360,7 +360,7 @@ int get_raw_token(Token *token){
                 */
                 else if (isalnum(c)){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_INT_LITERAL;
@@ -376,12 +376,12 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_NUMBER;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -389,12 +389,12 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_DOUBLE;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -403,21 +403,21 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                 }else if (c == '_'){
                     state = STATE_IN_DOUBLE_UNDERSCORE;
                 }else if (c == 'e' || c == 'E'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP_START;
                 }else if (c == 'd' || c == 'D'){
                     int next = getchar();
                     if (isalnum(next) || next == '_'){
                         dstring_free(&word);
-                        return 1;
+                        report_error(ERR_LEXICAL, current_line);
                     }
                     ungetc(next, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -426,7 +426,7 @@ int get_raw_token(Token *token){
                     return 0;
                 }else if (isalpha(c)){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -443,12 +443,12 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_DOUBLE;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -456,18 +456,18 @@ int get_raw_token(Token *token){
                 if (c == '+' || c == '-'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP_SIGN;
                 }else if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -475,12 +475,12 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -488,7 +488,7 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                 }else if (c == '_'){
                     state = STATE_IN_EXP_UNDERSCORE;
@@ -496,7 +496,7 @@ int get_raw_token(Token *token){
                      int next = getchar();
                     if (isalnum(next) || next == '_'){
                         dstring_free(&word);
-                        return 1;
+                        report_error(ERR_LEXICAL, current_line);
                     }
                     ungetc(next, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -505,7 +505,7 @@ int get_raw_token(Token *token){
                     return 0;
                 }else if (isalpha(c)){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -519,12 +519,12 @@ int get_raw_token(Token *token){
                 if (isdigit(c)){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                     state = STATE_IN_EXP;
                 }else{
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
             break;
 
@@ -549,7 +549,7 @@ int get_raw_token(Token *token){
                         c = getchar();
 
                         if (c == EOF){
-                            return 1; //lexikální chyba (konec souboru byl nalezen dřív než konec řádku)
+                            report_error(ERR_LEXICAL, current_line); //lexikální chyba (konec souboru byl nalezen dřív než konec řádku)
                         }
                         //vnoření blokového komentáře
                         if (c == '\n'){
@@ -582,7 +582,7 @@ int get_raw_token(Token *token){
                             }else if (c == EOF) {
                                 break;
                             }else{
-                                return 1;
+                                report_error(ERR_LEXICAL, current_line);
                             }
                         }
                         
@@ -610,13 +610,13 @@ int get_raw_token(Token *token){
                 }else if (c == '\n' || c == EOF){
                     //neukončený řetězec
                     dstring_free(&word);
-                    return 1; //lexikální chyba
+                    report_error(ERR_LEXICAL, current_line); //lexikální chyba
                 }
                 else{
                     //obyčejný text
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99; //interní chyba
+                        report_error(ERR_INTERNAL, current_line); //interní chyba
                     }
                 }
             break;
@@ -625,32 +625,32 @@ int get_raw_token(Token *token){
                 if (c == '"'){
                     if (!dstring_append(&word, '"')){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }else if (c == '\\'){
                     if (!dstring_append(&word, '\\')){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }else if (c == 'n'){
                     if (!dstring_append(&word, '\n')){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }else if (c == 'r'){
                     if (!dstring_append(&word, '\r')){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }else if (c == 't'){
                     if (!dstring_append(&word, '\t')){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }else{
                     //ostatní escape sekvence jsou neplatné
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }
                 state = STATE_IN_STRING;
 
@@ -659,14 +659,14 @@ int get_raw_token(Token *token){
             case STATE_IN_MULTILINE_STRING:
                 if (c == EOF){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else if (c == '"'){
                     state = STATE_MULTILINE_1;
                 }else{
                     if (c == '\n') current_line++;
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                 }
             break;
@@ -674,14 +674,14 @@ int get_raw_token(Token *token){
             case STATE_MULTILINE_1:
                 if (c == EOF){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else if (c == '"'){
                     state = STATE_MULTILINE_2;
                 }else{
                     if (c == '\n') current_line++;
                     if (!dstring_append(&word, '"') || !dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_MULTILINE_STRING;
                 }
@@ -690,13 +690,13 @@ int get_raw_token(Token *token){
             case STATE_MULTILINE_2:
                 if (c == EOF){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else if (c == '"'){
                     int next = getchar();
                     while (next == '"'){
                         if (!dstring_append(&word, '"')){
                             dstring_free(&word);
-                            return 99;
+                            report_error(ERR_INTERNAL, current_line);
                         }
                         next = getchar();
                     }
@@ -710,7 +710,7 @@ int get_raw_token(Token *token){
                     if (c == '\n') current_line++;
                     if (!dstring_append(&word, '"') || !dstring_append(&word, '"') || !dstring_append(&word, c)) {
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_MULTILINE_STRING;
                 }
@@ -721,14 +721,14 @@ int get_raw_token(Token *token){
                     token->type = TOKEN_AND;
                     return 0;
                 }
-                return 1; //lexikální chyba
+                report_error(ERR_LEXICAL, current_line); //lexikální chyba
 
             case STATE_OR:
                 if (c == '|'){
                     token->type = TOKEN_OR;
                     return 0;
                 }
-                return 1; //lexikální chyba
+                report_error(ERR_LEXICAL, current_line); //lexikální chyba
 
             case STATE_AT:
                 if (c == 'm'){
@@ -744,14 +744,14 @@ int get_raw_token(Token *token){
                         return 0;
                     }
                 }
-                return 1; //lexikální chyba
+                report_error(ERR_LEXICAL, current_line); //lexikální chyba
 
             case STATE_DOT:
                 if (isdigit(c)){
-                    if (!dstring_init(&word)) return 99;
+                    if (!dstring_init(&word)) report_error(ERR_INTERNAL, current_line);
                     if (!dstring_append(&word, '0') || !dstring_append(&word, '.') || !dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_DOUBLE;
                 }else{
@@ -765,13 +765,13 @@ int get_raw_token(Token *token){
                 if (c == '.'){
                      if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_DOUBLE_START;
                 }else if (c == 'e' || c == 'E'){
                     if (!dstring_append(&word, c)){
                         dstring_free(&word);
-                        return 99;
+                        report_error(ERR_INTERNAL, current_line);
                     }
                     state = STATE_IN_EXP_START;
                 }
@@ -780,7 +780,7 @@ int get_raw_token(Token *token){
                     int next = getchar();
                     if (isalnum(next) || next == '_'){
                         dstring_free(&word);
-                        return 1;
+                        report_error(ERR_LEXICAL, current_line);
                     }
                     ungetc(next, stdin);
                     token->type = TOKEN_DOUBLE_LITERAL;
@@ -791,7 +791,7 @@ int get_raw_token(Token *token){
                 */
                 else if (isalnum(c) || c == '_'){
                     dstring_free(&word);
-                    return 1;
+                    report_error(ERR_LEXICAL, current_line);
                 }else{
                     ungetc(c, stdin);
                     token->type = TOKEN_INT_LITERAL;
@@ -846,7 +846,7 @@ int get_next_token(Token *token){
 
     if (saw_invalid_indent){
         free_token_if_allocated(&buffered_token);
-        return 1;
+        report_error(ERR_LEXICAL, current_line);
     }
 
     if (in_paren_continuation){
@@ -854,7 +854,7 @@ int get_next_token(Token *token){
         bool bad_indent = (buffered_token.type == TOKEN_RPAREN) ? (current_spaces < logical_line_indent) : (current_spaces<= logical_line_indent);
         if (bad_indent) {
             free_token_if_allocated(&buffered_token);
-            return 1;
+            report_error(ERR_LEXICAL, current_line);
         }
         *token = buffered_token;
         return 0;
@@ -867,7 +867,7 @@ int get_next_token(Token *token){
         if (current_spaces > indent_stack[top_idx]){
             if (top_idx >= 99){
                 free_token_if_allocated(&buffered_token);
-                return 99;
+                report_error(ERR_INTERNAL, current_line);
             }
             top_idx++;
             indent_stack[top_idx] = current_spaces;
@@ -885,7 +885,7 @@ int get_next_token(Token *token){
 
             if (current_spaces != indent_stack[top_idx]){
                 free_token_if_allocated(&buffered_token);
-                return 1; //lexikální chyba
+                report_error(ERR_LEXICAL, current_line); //lexikální chyba
             }
 
             if (dedent_count > 0){

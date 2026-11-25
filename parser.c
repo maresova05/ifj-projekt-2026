@@ -41,8 +41,8 @@ static DataType parse_expr_value(void);
 * @brief ohlásí syntaktickou chybu a ukončí překlad
 */
 static void syntax_error(const char *msg){
-    fprintf(stderr,"Syntax error on line %d: %s\n",current.line,msg);
-    report_error(ERR_SYNTAX, 0);
+    report_error(ERR_SYNTAX, current.line);
+    fprintf(stderr,":%s\n",msg);
 }
 
 /**

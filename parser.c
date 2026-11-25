@@ -513,9 +513,29 @@ static void parse_function(void){
     parse_params();
     expect(TOKEN_RPAREN,"expected )");
     expect(TOKEN_COLON,"expected :");
-    parse_type();
+    DataType t = parse_type();
+    SymbolData f = symtable_make_func(t,true,true,is_main);
+    for(int i = 0;i < pcount;i++){
+        symtable_func_add_param(&f,ptypes[i]);
+    }
+    SymTableResult s = symtable_stack_insert(&symstack,name,&f);
+    if(s == SYMTABLE_EXISTS){
+        report_error(ERR_REDEFINITION, current.line);
+    }
+    free(f.param_types);
+    symtable_stack_push(&symstack);
+    for(int i = 0;i < pcount;i++){
+        SymbolData v = symtable_make_var(ptypes[i],false,true,0);
+        SymTableResult ps = symtable_stack_insert(&symstack,pnames[i],&v);
+        if(ps == SYMTABLE_EXISTS){
+            report_error(ERR_REDEFINITION, current.line);
+        }
+    }
     expect(TOKEN_ASSIGN,"expected =");
     gen_func_start(name);
+    for(int i = 0;i < pcount;i++){
+        gen_func_param(pnames[i],symstack.top->scope_id,i);
+    }
     if(current.type == TOKEN_EOL){
         parse_block();
     } else {
@@ -523,6 +543,7 @@ static void parse_function(void){
         expect(TOKEN_EOL,"expected end of line");
     }
     gen_func_end();
+    symtable_stack_pop(&symstack);
 }
 
 /**

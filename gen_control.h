@@ -43,4 +43,15 @@ void gen_while_cond(int id);
 */
 void gen_while_end(int id);
 
+/**
+* @brief vypíše LABEL funkce a vytvoří lokální rámec PUSHFRAME
+* @param name jméno funkce
+*/
+void gen_func_start(const char *name);
+
+/**
+* @brief zruší lokální rámec a vrátí se k volajícímu
+*/
+void gen_func_end(void);
+
 #endif

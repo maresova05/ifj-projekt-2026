@@ -34,3 +34,13 @@ void gen_while_end(int id){
     printf("JUMP $while_start_%d\n",id);
     printf("LABEL $while_end_%d\n",id);
 }
+
+void gen_func_start(const char *name){
+    printf("LABEL $%s\n", name);
+    printf("PUSHFRAME\n");
+}
+
+void gen_func_end(void){
+    printf("POPFRAME\n");
+    printf("RETURN\n");
+}

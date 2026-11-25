@@ -415,8 +415,76 @@ void gen_operator(TokenType op_type){
 }
 
 static int logic_label_counter = 0;
+static ExprResult parse_expression_internal(const SymTableStack *local_stack, DataType *final_type, Token*next_token, bool has_first_token, Token first_token);
 
+static ExprResult parse_function_call(const SymTableStack *local_stack, const char *func_name, DataType *ret_type){
+    SymbolData *func = symtable_stack_search(local_stack, func_name);
+    if (func == NULL || func->symbol_type != SYMBOL_FUNC){
+        return EXPR_ERR_UNDEF;
+    }
 
+    size_t arg_count = 0;
+    Token tok = {0};
+    int lex_rc = get_next_token(&tok);
+    if(lex_rc != 0){
+        return (lex_rc == 1) ? EXPR_ERR_LEX : EXPR_ERR_INTERNAL;
+    }
+
+    if(tok.type != TOKEN_RPAREN){
+        bool has_first = true;
+        Token first_arg_tok = tok;
+
+        while(1){
+            DataType arg_type = TYPE_UNDEFINED;
+            Token stop_tok = {0};
+
+            ExprResult rc = parse_expression_internal(local_stack, &arg_type, &stop_tok, has_first, first_arg_tok);
+
+            if(rc != EXPR_OK){
+                return rc;
+            }
+            has_first = false;
+
+            if(arg_count >= func->param_count){
+                free_token_attr(&stop_tok);
+                return EXPR_ERR_PARAM;
+            }
+
+            DataType expect_type = func->param_types[arg_count];
+            if(expect_type != TYPE_ANY && arg_type != expect_type){
+                free_token_attr(&stop_tok);
+                return EXPR_ERR_PARAM;
+            }
+
+            arg_count ++;
+
+            if(stop_tok.type == TOKEN_COMMA){
+                continue;
+            }else if (stop_tok.type == TOKEN_RPAREN){
+                break;
+            }else{
+                free_token_attr(&stop_tok);
+                return EXPR_ERR_SYNTAX;
+            }
+        }
+    }
+
+    if(arg_count != func->param_count){
+        return EXPR_ERR_PARAM;
+    }
+
+    printf("CREATEFRAME\n");
+    for (size_t i = arg_count; i> 0; i--){
+        printf("DEFVAR TF@%%param%zu\n", i-1);
+        printf("POPS TF@%%param%zu\n", i-1);
+    }
+
+    printf("CALL $%s\n", func_name);
+    printf("PUSHS TF@%%retval\n");
+
+    *ret_type = func->data_type;
+    return EXPR_OK;
+}
 /**
  * Hlavní funkce pro syntaktickou analýzu výrazu.
  * @param local_stack Ukazatel na lokální tabulku symbolů
@@ -424,7 +492,7 @@ static int logic_label_counter = 0;
  * @param next_token Výstupní parametr, zde se uloží token na kterém se parser zastavil
  * @return ExprResult Vrací EXPR_OK(0) při úspěchu, nebo příslušný chybový kód.
  */
-ExprResult parse_expression(const SymTableStack *local_stack, DataType *final_type, Token*next_token){
+static ExprResult parse_expression_internal(const SymTableStack *local_stack, DataType *final_type, Token*next_token, bool has_first_token, Token first_token){
     Stack s;
    
     if(!stack_init(&s)){
@@ -442,13 +510,18 @@ ExprResult parse_expression(const SymTableStack *local_stack, DataType *final_ty
         return EXPR_ERR_INTERNAL;
     }
 
+    int lex_rc;
     Token current_token = {0};
-    int lex_rc = get_next_token(&current_token);
-    if(lex_rc != 0){
-        stack_free(&s);
-        return (lex_rc == 1) ? EXPR_ERR_LEX : EXPR_ERR_INTERNAL;
+    if(has_first_token){
+        current_token = first_token;
+    }else{
+        lex_rc = get_next_token(&current_token);
+        if(lex_rc != 0){
+            stack_free(&s);
+            return (lex_rc == 1) ? EXPR_ERR_LEX : EXPR_ERR_INTERNAL;
+        }
     }
-
+    
     if(current_token.type == TOKEN_LPAREN){
         paren_count++;
     }
@@ -888,6 +961,44 @@ ExprResult parse_expression(const SymTableStack *local_stack, DataType *final_ty
             }
 
             case X:{
+                //FUNEXP: volání funkce id(...)
+                if(top_term == ID && input_symbol == L_PAR && top_term_item.token.type == TOKEN_IDENTIFIER
+                    && s.top >= 1 && s.items[s.top].type == STACK_ID && s.items[s.top - 1].type == STACK_STOP){
+                        StackItem id_item = stack_top(&s);
+                        stack_pop(&s);
+                        stack_pop(&s);
+
+                        if(paren_count > 0){
+                            paren_count --;
+                        }
+                        current_token = empty_token;
+
+                        DataType func_ret_type = TYPE_UNDEFINED;
+                        ExprResult rc = parse_function_call(local_stack, id_item.token.attribute.s_val, &func_ret_type);
+                        free_token_attr(&id_item.token);
+
+                        if(rc != EXPR_OK){
+                            stack_free(&s);
+                            return rc;
+                        }
+
+                        StackItem non_term = {STACK_NON_TERM, empty_token, func_ret_type, 0};
+                        if(!stack_push(&s, non_term)){
+                            stack_free(&s);
+                            return EXPR_ERR_INTERNAL;
+                        }
+                        expect_operand = false;
+                        lex_rc = get_next_token(&current_token);
+                        if(lex_rc != 0){
+                            stack_free(&s);
+                            return (lex_rc == 1) ? EXPR_ERR_LEX : EXPR_ERR_INTERNAL;
+                        }
+                        if(current_token.type == TOKEN_LPAREN){
+                            paren_count++;
+                        }
+                        input_symbol = map_token_to_symbol(current_token.type, paren_count, expect_operand);
+                        break;
+                    }
                 if(top_term == DOLLAR && input_symbol == DOLLAR){
                     if(s.top != 1 || s.items[1].type != STACK_NON_TERM){
                         free_token_attr(&current_token);
@@ -929,4 +1040,9 @@ ExprResult parse_expression(const SymTableStack *local_stack, DataType *final_ty
     stack_free(&s);
     return EXPR_OK;
     */
+}
+
+ExprResult parse_expression(const SymTableStack *local_stack, DataType *final_type, Token*next_token){
+    Token empty = {0};
+    return parse_expression_internal(local_stack, final_type, next_token, false, empty);
 }

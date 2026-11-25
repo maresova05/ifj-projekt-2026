@@ -17,12 +17,46 @@ static char *pnames[MAX_PARAMS];
 static DataType ptypes[MAX_PARAMS];
 static int pcount;
 
-// TODO: nahradit funkcemi
+/**
+* @brief založí novou proměnnou
+* @param name jméno proměnné
+* @param is_mutable false, pokud je value a true, pokud je variable
+* @param declared deklarovaný datový typ
+* @param expr_type datový typ výrazu
+*/
 static void sem_var_def(const char *name, bool is_mutable, DataType declared, DataType expr_type){
-    (void)name; (void)is_mutable; (void)declared; (void)expr_type;
+    if(declared == TYPE_UNDEFINED){
+        declared = expr_type;
+    }
+    if(expr_type != declared){
+        report_error(ERR_TYPE,current.line);
+    }
+    SymbolData s = symtable_make_var(declared, is_mutable,false,symstack.top->scope_id);
+    SymTableResult ps = symtable_stack_insert(&symstack,name,&s);
+    if(ps == SYMTABLE_EXISTS){
+        report_error(ERR_REDEFINITION,current.line);
+    }
+    printf("DEFVAR LF@%s$%d\n",name,symstack.top->scope_id);
+    printf("POPS LF@%s$%d\n",name,symstack.top->scope_id);
 }
+
+/**
+* @brief přiřazení do existující proměnné
+* @param name jméno proměnné 
+* @param expr_type datový typ výrazu
+*/
 static void sem_assign(const char *name, DataType expr_type){
-    (void)name; (void)expr_type;
+    SymbolData *s = symtable_stack_search(&symstack,name);
+    if(s == NULL || s->symbol_type != SYMBOL_VAR){
+        report_error(ERR_UNDEFINED_SYMBOL,current.line);
+    }
+    if(s->is_mutable == false){
+        report_error(ERR_IMMUTABLE,current.line);
+    }
+    if(expr_type != s->data_type){
+        report_error(ERR_TYPE,current.line);
+    }
+    printf("POPS LF@%s$%d\n",name,s->scope_id);
 }
 
 // pro volání funkcí v libovolném pořadí

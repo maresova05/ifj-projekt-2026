@@ -38,9 +38,22 @@ void gen_while_end(int id){
 void gen_func_start(const char *name){
     printf("LABEL $%s\n", name);
     printf("PUSHFRAME\n");
+    printf("DEFVAR LF@%%retval\n");
+    printf("MOVE LF@%%retval nil@nil\n");
 }
 
 void gen_func_end(void){
+    printf("POPFRAME\n");
+    printf("RETURN\n");
+}
+
+void gen_func_param(const char *name, int scope_id,int index){
+    printf("DEFVAR LF@%s$%d\n",name, scope_id);
+    printf("MOVE LF@%s$%d LF@%%param%d\n",name,scope_id,index);
+}
+
+void gen_return_value(void){
+    printf("POPS LF@%%retval\n");
     printf("POPFRAME\n");
     printf("RETURN\n");
 }

@@ -44,14 +44,27 @@ void gen_while_cond(int id);
 void gen_while_end(int id);
 
 /**
-* @brief vypíše LABEL funkce a vytvoří lokální rámec PUSHFRAME
+* @brief vypíše LABEL funkce, vytvoří lokální rámec a založí %retval s hodnotou nil
 * @param name jméno funkce
 */
 void gen_func_start(const char *name);
 
 /**
-* @brief zruší lokální rámec a vrátí se k volajícímu
+* @brief zruší lokální rámec a vrátí se k volajícímu, i pro prázdný return
 */
 void gen_func_end(void);
+
+/**
+* @brief převede parametr z %paramN na proměnnou name$scope_id
+* @param name jméno parametru
+* @param scope_id číslo rozsahu z tabulky symbolů
+* @param index pořadí parametru zleva
+*/
+void gen_func_param(const char *name, int scope_id, int index);
+
+/**
+* @brief uloží hodnotu ze zásobníku do %retval a vrátí se z funkce
+*/
+void gen_return_value(void);
 
 #endif

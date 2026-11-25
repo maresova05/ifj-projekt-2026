@@ -9,6 +9,14 @@
 
 static Token current; // aktuální token
 
+// TODO: nahradit funkcemi
+static void sem_var_def(const char *name, bool is_mutable, DataType declared, DataType expr_type){
+    (void)name; (void)is_mutable; (void)declared; (void)expr_type;
+}
+static void sem_assign(const char *name, DataType expr_type){
+    (void)name; (void)expr_type;
+}
+
 // pro volání funkcí v libovolném pořadí
 static void parse_statement(void);
 static void parse_simple_list(void);
@@ -19,6 +27,7 @@ static void parse_if(void);
 static void parse_while(void);
 static void skip_to_end(void);
 static void parse_rhs(void);
+static DataType parse_expr_value(void);
 
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad
@@ -57,24 +66,26 @@ static void expect(TokenType type, const char *msg){
 /**
 * @brief parsuje typ (pravidlo 12)
 */
-static void parse_type(void){
+static DataType parse_type(void){
+    DataType t = TYPE_UNDEFINED;
     switch(current.type){
         case TOKEN_KW_INT:
-            expect(TOKEN_KW_INT,"expected int");
+            t = TYPE_INT;
             break;
         case TOKEN_KW_DOUBLE:
-            expect(TOKEN_KW_DOUBLE,"expected double");
+            t = TYPE_DOUBLE;
             break;
         case TOKEN_KW_STRING:
-            expect(TOKEN_KW_STRING,"expected string");
+            t = TYPE_STRING;
             break;
         case TOKEN_KW_UNIT:
-            expect(TOKEN_KW_UNIT,"expected unit");
+            t = TYPE_UNIT;
             break;
         default:
             syntax_error("expected type");
-            break;
     }
+    next();
+    return t;
 }
 
 
@@ -120,14 +131,21 @@ static void parse_statement(void){
 * @brief parsuje definici proměnné val/var
 */
 static void parse_var_def(void){
+    bool is_mutable = (current.type == TOKEN_VAR);
     next();
-    expect(TOKEN_IDENTIFIER,"expected identifier");
+    if(current.type != TOKEN_IDENTIFIER){ syntax_error("expected identifier"); }
+    char *name = current.attribute.s_val;
+    next();
+    DataType declared = TYPE_UNDEFINED;
     if(current.type == TOKEN_COLON){
         next();
-        parse_type();
+        declared = parse_type();
     }
-    expect(TOKEN_ASSIGN,"expected =");
-    parse_rhs();
+    if(current.type != TOKEN_ASSIGN){
+        syntax_error("expected =");
+    }
+    DataType t = parse_expr_value();
+    sem_var_def(name, is_mutable, declared, t);
 }
 
 /**
@@ -144,9 +162,12 @@ static void parse_return(void){
 /**
 * @brief parsuje přiřazení 
 */
-static void parse_assign(void){
-    expect(TOKEN_ASSIGN,"expected =");
-    parse_rhs();
+static void parse_assign(const char *name){
+    if(current.type != TOKEN_ASSIGN){
+        syntax_error("expected =");
+    }
+    DataType t = parse_expr_value();
+    sem_assign(name,t);
 }
 
 /**
@@ -219,11 +240,12 @@ static void parse_simple_statement(void){
         case TOKEN_LPAREN:
             skip_to_end();
             break;
-        case TOKEN_IDENTIFIER:
+        case TOKEN_IDENTIFIER:{
+            char *name = current.attribute.s_val;
             next();
             switch(current.type){
                 case TOKEN_ASSIGN:
-                    parse_assign();
+                    parse_assign(name);
                     break;
                 case TOKEN_LPAREN:
                     parse_call();
@@ -246,6 +268,7 @@ static void parse_simple_statement(void){
                     syntax_error("expected something");
             }
             break;
+        }
         default:
             syntax_error("expected something");
     }
@@ -330,17 +353,22 @@ static void parse_block(void){
     expect(TOKEN_DEDENT,"expected dedent");
 }
 
-static void parse_condition(void){
-    DataType type;
+static DataType parse_expr_value(void){
+    DataType type = TYPE_UNDEFINED;
     Token tok = {0};
     ExprResult res = parse_expression(NULL, &type, &tok); // TODO SymTableStack
     if(res != EXPR_OK){
         report_error((Error_code)res,current.line);
     }
+    current = tok;
+    return type;
+}
+
+static void parse_condition(void){
+    DataType type = parse_expr_value();
     if(type != TYPE_BOOL){
         report_error(ERR_TYPE,current.line);
     }
-    current = tok;
 }
 
 /**

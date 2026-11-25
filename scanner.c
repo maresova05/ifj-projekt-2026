@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "scanner.h"
 #include "dstring.h"
+#include "error.h"
 
 typedef enum {
     STATE_START,
@@ -830,6 +831,23 @@ int get_next_token(Token *token){
     }
 
     if (buffered_token.type == TOKEN_EOF){
+        if (line_has_token && paren_depth == 0){
+            line_has_token = false;
+            is_line_start = true;
+            counting_indent = true;
+            current_spaces = 0;
+            saw_invalid_indent = false;
+
+            if (top_idx > 0){
+                pending_dedents = top_idx;
+                top_idx = 0;
+            }
+
+            has_buffered_token = true;
+            token->type = TOKEN_EOL;
+            token->line = buffered_token.line;
+            return 0;
+        }
         if (top_idx > 0){
             pending_dedents = top_idx - 1;
             top_idx = 0;

@@ -10,6 +10,10 @@
 
 static Token current; // aktuální token
 
+static int block_depth = 0; // zanoření
+
+static DataType cur_ret_type; // pro zapamatování návratové hodnoty funkce
+
 // Napojení na tabulku symbolů
 static SymTableStack symstack;
 #define MAX_PARAMS 32
@@ -67,9 +71,10 @@ static bool is_simple_statement_start(void);
 static bool is_statement_start(void);
 static void parse_if(void);
 static void parse_while(void);
-static void skip_to_end(void);
-static void parse_rhs(void);
 static DataType parse_expr_value(void);
+static void parse_expr_statement(void);
+
+void scanner_unget(Token token);
 
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad
@@ -130,23 +135,6 @@ static DataType parse_type(void){
     return t;
 }
 
-
-/**
-* @brief parsuje term (pravidla 55-58)
-*/
-static void parse_term(void){
-    switch (current.type){
-        case TOKEN_IDENTIFIER:
-        case TOKEN_INT_LITERAL:
-        case TOKEN_DOUBLE_LITERAL:
-        case TOKEN_STRING_LITERAL:
-            next();
-            break;
-        default:
-            syntax_error("expected identifier or literal");
-    }
-}
-
 /**
 * @brief parsuje příkazy (pravidla 26 až 28)
 */
@@ -166,6 +154,18 @@ static void parse_statement(void){
                 syntax_error("expected statement");
             }
             break;
+    }
+}
+
+/**
+* @brief pokud je hodnota ve funkci uloží ji do retval, pokud v if/else zahodí ji
+*/
+static void parse_expr_statement(void){
+    parse_expr_value();
+    if(block_depth == 1 && cur_ret_type != TYPE_UNIT){
+        gen_expr_to_retval();
+    } else {
+        gen_expr_discard();
     }
 }
 
@@ -196,9 +196,23 @@ static void parse_var_def(void){
 static void parse_return(void){
     expect(TOKEN_RETURN,"expected return");
     if(current.type == TOKEN_EOL || current.type == TOKEN_SEMICOLON){
+        if (cur_ret_type != TYPE_UNIT){
+            report_error(ERR_OTHER_SEMANTIC,current.line);
+        }
+        gen_func_end();
         return;
     }
-    parse_rhs();
+    scanner_unget(current);
+    DataType t = parse_expr_value();
+    if(cur_ret_type == TYPE_UNIT){
+        gen_expr_discard();
+        gen_func_end();
+        return;
+    }
+    if(cur_ret_type != t){
+        report_error(ERR_TYPE,current.line);
+    }
+    gen_return_value();
 }
 
 /**
@@ -210,56 +224,6 @@ static void parse_assign(const char *name){
     }
     DataType t = parse_expr_value();
     sem_assign(name,t);
-}
-
-/**
-* @brief parsuje volání funkce a seznam argumentů
-*/
-static void parse_call(void){
-    expect(TOKEN_LPAREN,"expected (");
-    if(current.type == TOKEN_IDENTIFIER ||
-          current.type == TOKEN_INT_LITERAL ||
-          current.type == TOKEN_DOUBLE_LITERAL ||
-          current.type == TOKEN_STRING_LITERAL){
-            parse_term();
-            while(current.type == TOKEN_COMMA){
-                next();
-                parse_term();
-            }
-          }
-    expect(TOKEN_RPAREN,"expected )");
-}
-
-/**
-* @brief přeskočí výraz do EOL nebo středníku
-*/
-static void skip_to_end(void){ // TODO vyrazy
-    while(current.type != TOKEN_EOL &&
-          current.type != TOKEN_EOF &&
-          current.type != TOKEN_SEMICOLON){
-            next(); // TODO
-          }
-}
-
-/**
-* @return true, pokud je aktuální token binární operátor
-*/
-static bool is_binary_op(void){
-    switch(current.type){
-        case TOKEN_PLUS:
-        case TOKEN_MINUS:
-        case TOKEN_MUL:    
-        case TOKEN_DIV:    
-        case TOKEN_LESS:    
-        case TOKEN_LESS_EQ:    
-        case TOKEN_GREATER:    
-        case TOKEN_GREATER_EQ:    
-        case TOKEN_EQ:    
-        case TOKEN_NEQ:    
-            return true;
-        default:
-            return false;
-    }
 }
 
 /**
@@ -280,18 +244,18 @@ static void parse_simple_statement(void){
         case TOKEN_DOUBLE_LITERAL:
         case TOKEN_STRING_LITERAL:
         case TOKEN_LPAREN:
-            skip_to_end();
+            scanner_unget(current);
+            parse_expr_statement();
             break;
         case TOKEN_IDENTIFIER:{
             char *name = current.attribute.s_val;
+            Token id_tok = current;
             next();
             switch(current.type){
                 case TOKEN_ASSIGN:
                     parse_assign(name);
                     break;
                 case TOKEN_LPAREN:
-                    parse_call();
-                    break;
                 case TOKEN_PLUS:
                 case TOKEN_MINUS:
                 case TOKEN_MUL:
@@ -304,7 +268,9 @@ static void parse_simple_statement(void){
                 case TOKEN_NEQ:
                 case TOKEN_SEMICOLON:
                 case TOKEN_EOL:
-                    skip_to_end();
+                    scanner_unget(current);
+                    scanner_unget(id_tok);
+                    parse_expr_statement();
                     break;
                 default:
                     syntax_error("expected something");
@@ -389,14 +355,20 @@ static void parse_statements(void){
 * @brief parsuje blok, uvnitř cyklus příkazů, (pravidlo 22)
 */
 static void parse_block(void){
+    block_depth++;
     symtable_stack_push(&symstack);
     expect(TOKEN_EOL,"expected end of line");
     expect(TOKEN_INDENT,"expected indent");
     parse_statements();
     expect(TOKEN_DEDENT,"expected dedent");
     symtable_stack_pop(&symstack);
+    block_depth--;
 }
 
+/**
+* @brief zpracuje výraz precedenční analýzou, do current uloží token, na kterém výraz skončil
+* @return datový typ výrazu 
+*/
 static DataType parse_expr_value(void){
     DataType type = TYPE_UNDEFINED;
     Token tok = {0};
@@ -408,6 +380,9 @@ static DataType parse_expr_value(void){
     return type;
 }
 
+/**
+* @brief zpracuje podmínku if/while, výsledek musí být bool
+*/
 static void parse_condition(void){
     DataType type = parse_expr_value();
     if(type != TYPE_BOOL){
@@ -447,36 +422,6 @@ static void parse_while(void){
     gen_while_cond(id);
     parse_block();
     gen_while_end(id);
-}
-
-/**
-* @brief parsuje pravou stranu přiřazení, výrazy zatím přeskakuje
-*/
-static void parse_rhs(void){ // TODO vyrazy
-    switch(current.type){
-        case TOKEN_PLUS:
-        case TOKEN_MINUS:
-        case TOKEN_INT_LITERAL:
-        case TOKEN_DOUBLE_LITERAL:
-        case TOKEN_STRING_LITERAL:
-        case TOKEN_LPAREN:
-            skip_to_end();
-            break;
-        case TOKEN_IDENTIFIER:
-            next();
-            if (is_binary_op()){
-                skip_to_end();
-            } else if(current.type == TOKEN_LPAREN){
-                parse_call();
-            } else if(current.type == TOKEN_SEMICOLON || current.type == TOKEN_EOL){
-                // nothing
-            } else {
-                syntax_error("expected something");
-            }
-            break;
-        default:
-            syntax_error("expected something");
-    }
 }
 
 /**
@@ -538,7 +483,7 @@ static void parse_prolog(void){
 /**
 * @brief parsuje definici funkce včetně těla
 */
-static void parse_function(void){
+static void parse_function(void){ // AI: vytvoření kostry funkce
     bool is_main = parse_main_annot();
     expect(TOKEN_DEF,"expected def");
     char *name = current.attribute.s_val;
@@ -548,6 +493,7 @@ static void parse_function(void){
     expect(TOKEN_RPAREN,"expected )");
     expect(TOKEN_COLON,"expected :");
     DataType t = parse_type();
+    cur_ret_type = t;
     SymbolData f = symtable_make_func(t,true,true,is_main);
     for(int i = 0;i < pcount;i++){
         symtable_func_add_param(&f,ptypes[i]);
@@ -573,9 +519,18 @@ static void parse_function(void){
     if(current.type == TOKEN_EOL){
         parse_block();
     } else {
-        parse_rhs();
-        expect(TOKEN_EOL,"expected end of line");
+        scanner_unget(current);
+        DataType pt = parse_expr_value();
+        if(cur_ret_type == TYPE_UNIT){
+            gen_expr_discard();
+        } else {
+        if (pt != cur_ret_type){
+            report_error(ERR_TYPE,current.line);
+        }
+        gen_expr_to_retval();
     }
+        expect(TOKEN_EOL,"expected end of line");
+    }     
     gen_func_end();
     symtable_stack_pop(&symstack);
 }

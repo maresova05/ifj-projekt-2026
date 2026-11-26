@@ -7,12 +7,17 @@
 #include "expression.h"
 #include "gen_control.h"
 #include "symtable.h"
+#include "gen_base.h"
 
 static Token current; // aktuální token
 
 static int block_depth = 0; // zanoření
 
 static DataType cur_ret_type; // pro zapamatování návratové hodnoty funkce
+
+static bool main_found = false; // kontrola @main
+
+static DataType last_body_type; // pro zjištění návratového typu funkce
 
 // Napojení na tabulku symbolů
 static SymTableStack symstack;
@@ -40,8 +45,8 @@ static void sem_var_def(const char *name, bool is_mutable, DataType declared, Da
     if(ps == SYMTABLE_EXISTS){
         report_error(ERR_REDEFINITION,current.line);
     }
-    printf("DEFVAR LF@%s$%d\n",name,symstack.top->scope_id);
-    printf("POPS LF@%s$%d\n",name,symstack.top->scope_id);
+    gen_defvar(name,symstack.top->scope_id);
+    gen_emit("POPS LF@%s$%d\n",name,symstack.top->scope_id);
 }
 
 /**
@@ -60,7 +65,7 @@ static void sem_assign(const char *name, DataType expr_type){
     if(expr_type != s->data_type){
         report_error(ERR_TYPE,current.line);
     }
-    printf("POPS LF@%s$%d\n",name,s->scope_id);
+    gen_emit("POPS LF@%s$%d\n",name,s->scope_id);
 }
 
 // pro volání funkcí v libovolném pořadí
@@ -139,6 +144,9 @@ static DataType parse_type(void){
 * @brief parsuje příkazy (pravidla 26 až 28)
 */
 static void parse_statement(void){
+    if(block_depth == 1){
+        last_body_type = TYPE_UNIT;
+    }
     switch(current.type){
         case TOKEN_IF:
             parse_if();
@@ -161,7 +169,10 @@ static void parse_statement(void){
 * @brief pokud je hodnota ve funkci uloží ji do retval, pokud v if/else zahodí ji
 */
 static void parse_expr_statement(void){
-    parse_expr_value();
+    DataType t = parse_expr_value();
+    if(block_depth == 1){
+        last_body_type = t;
+    }
     if(block_depth == 1 && cur_ret_type != TYPE_UNIT){
         gen_expr_to_retval();
     } else {
@@ -194,6 +205,9 @@ static void parse_var_def(void){
 * @brief parsuje return s volitelnou hodnotou
 */
 static void parse_return(void){
+    if(cur_ret_type == TYPE_UNDEFINED){
+        report_error(ERR_TYPE,current.line);
+    }
     expect(TOKEN_RETURN,"expected return");
     if(current.type == TOKEN_EOL || current.type == TOKEN_SEMICOLON){
         if (cur_ret_type != TYPE_UNIT){
@@ -491,9 +505,26 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
     expect(TOKEN_LPAREN,"expected (");
     parse_params();
     expect(TOKEN_RPAREN,"expected )");
-    expect(TOKEN_COLON,"expected :");
-    DataType t = parse_type();
+    DataType t = TYPE_UNDEFINED;
+    if(current.type == TOKEN_COLON){
+        next();
+        t = parse_type();
+    } else {
+        t = TYPE_UNDEFINED;
+    }
     cur_ret_type = t;
+    if(is_main){
+        if(main_found){
+            report_error(ERR_REDEFINITION,current.line);
+        }
+        if(pcount > 0){
+            report_error(ERR_ARGUMENTS,current.line);
+        }
+        if(t != TYPE_UNIT){
+            report_error(ERR_TYPE,current.line);
+        }
+    main_found = true;
+    }
     SymbolData f = symtable_make_func(t,true,true,is_main);
     for(int i = 0;i < pcount;i++){
         symtable_func_add_param(&f,ptypes[i]);
@@ -512,6 +543,9 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
         }
     }
     expect(TOKEN_ASSIGN,"expected =");
+    if(is_main){
+        gen_main_label();
+    }
     gen_func_start(name);
     for(int i = 0;i < pcount;i++){
         gen_func_param(pnames[i],symstack.top->scope_id,i);
@@ -524,14 +558,19 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
         if(cur_ret_type == TYPE_UNIT){
             gen_expr_discard();
         } else {
-        if (pt != cur_ret_type){
+        if (cur_ret_type != TYPE_UNDEFINED && cur_ret_type != pt){
             report_error(ERR_TYPE,current.line);
         }
+        last_body_type = pt;
         gen_expr_to_retval();
     }
         expect(TOKEN_EOL,"expected end of line");
     }     
     gen_func_end();
+    if(cur_ret_type == TYPE_UNDEFINED){
+        SymbolData *fs  = symtable_stack_search(&symstack,name);
+        fs->data_type = last_body_type;
+    }
     symtable_stack_pop(&symstack);
 }
 
@@ -553,5 +592,8 @@ int parse_program(void){
         parse_function();
     }
     expect(TOKEN_EOF,"expected end of file");
+    if(!main_found){
+        report_error(ERR_UNDEFINED_SYMBOL,current.line);
+    }
     return 0;
 }

@@ -19,7 +19,8 @@ typedef enum{
     NOT,        //Unární !
     MUL_DIV,    //*/
     PLUS_MINUS_BIN, //Binární +-
-    RELATIONAL, // <, <=, >, >=, ==, !=
+    REL_CMP, // <, <=, >, >=
+    REL_EQ,  // ==, !=
     AND,    //&&
     OR,     //||
     L_PAR, // (
@@ -50,18 +51,19 @@ typedef enum{
 
 //TABULKA S ROZŠÍŘENÍM BOOLTHEN
 const Action precedence_table[SIZE][SIZE] = {
-    // +-   !   */  +- REL  &&  ||  (   )   ID  $
-    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
-    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // !
-    {   S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // */
-    {   S,  S,  S,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
-    {   S,  S,  S,  S,  X,  R,  R,  S,  R,  S,  R}, // REL
-    {   S,  S,  S,  S,  S,  R,  R,  S,  R,  S,  R}, // &&
-    {   S,  S,  S,  S,  S,  S,  R,  S,  R,  S,  R}, // ||
-    {   S,  S,  S,  S,  S,  S,  S,  S,  E,  S,  X}, // (
-    {   X,  X,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // )
-    {   X,  X,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // ID
-    {   S,  S,  S,  S,  S,  S,  S,  S,  X,  S,  X}, // $
+    // +-   !   */  +- CMP  EQ,  &&  ||  (   )   ID  $
+    {   S,  S,  R,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
+    {   S,  S,  R,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // !
+    {   S,  S,  R,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // */
+    {   S,  S,  S,  R,  R,  R,  R,  R,  S,  R,  S,  R}, // +-
+    {   S,  S,  S,  S,  X,  R,  R,  R,  S,  R,  S,  R}, // REL
+    {   S,  S,  S,  S,  S,  X,  R,  R,  S,  R,  S,  R}, // EQ
+    {   S,  S,  S,  S,  S,  S,  R,  R,  S,  R,  S,  R}, // &&
+    {   S,  S,  S,  S,  S,  S,  S,  R,  S,  R,  S,  R}, // ||
+    {   S,  S,  S,  S,  S,  S,  S,  S,  S,  E,  S,  X}, // (
+    {   X,  X,  R,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // )
+    {   X,  X,  R,  R,  R,  R,  R,  R,  X,  R,  X,  R}, // ID
+    {   S,  S,  S,  S,  S,  S,  S,  S,  S,  X,  S,  X}, // $
 };
 
 /*
@@ -72,7 +74,8 @@ typedef enum{
     STACK_PLUS_MINUS_UN = PLUS_MINUS_UN, 
     STACK_MUL_DIV = MUL_DIV,   
     STACK_PLUS_MINUS_BIN = PLUS_MINUS_BIN, 
-    STACK_RELATIONAL = RELATIONAL,
+    STACK_REL_CMP = REL_CMP,
+    STACK_REL_EQ = REL_EQ,
     STACK_L_PAR = L_PAR, 
     STACK_R_PAR = P_PAR, 
     STACK_ID = ID, 
@@ -263,14 +266,15 @@ Symbol map_token_to_symbol(TokenType t_type, int paren_count, bool expect_operan
         case TOKEN_DIV:
             return MUL_DIV;
         
-
-        case TOKEN_EQ:
-        case TOKEN_NEQ:
         case TOKEN_LESS:
         case TOKEN_LESS_EQ:
         case TOKEN_GREATER:
         case TOKEN_GREATER_EQ:
-            return RELATIONAL;
+            return REL_CMP;
+
+        case TOKEN_EQ:
+        case TOKEN_NEQ:
+            return REL_EQ;
 
         case TOKEN_LPAREN:
             return L_PAR;
@@ -400,13 +404,28 @@ void gen_operator(TokenType op_type){
             break;
         
         case TOKEN_LESS_EQ:
-            printf("GTS\n");
-            printf("NOTS\n");
+            printf("POPS GF@$expr_op2\n");
+            printf("POPS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op2\n");
+            printf("LTS\n");
+            printf("PUSHS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op2\n");
+            printf("EQS\n");
+            printf("ORS\n");
             break;
 
         case TOKEN_GREATER_EQ:
-            printf("LTS\n");
-            printf("NOTS\n");
+            printf("POPS GF@$expr_op2\n");
+            printf("POPS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op2\n");
+            printf("GTS\n");
+            printf("PUSHS GF@$expr_op1\n");
+            printf("PUSHS GF@$expr_op2\n");
+            printf("PUSHS GF@$expr_op1\n");
+            printf("EQS\n");
+            printf("ORS\n");
             break;
         
         default:
@@ -750,7 +769,7 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
 
                 //pravidlo E -> E > E (== =!, ...)
                 if(handle_len == 3 && handle[0].type == STACK_NON_TERM &&
-                        handle[1].type == STACK_RELATIONAL &&
+                        (handle[1].type == STACK_REL_CMP || handle[1].type == STACK_REL_EQ) &&
                         handle[2].type == STACK_NON_TERM){
 
     

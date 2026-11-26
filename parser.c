@@ -132,6 +132,9 @@ static DataType parse_type(void){
         case TOKEN_KW_UNIT:
             t = TYPE_UNIT;
             break;
+        case TOKEN_KW_BOOLEAN:
+            t = TYPE_BOOL;
+            break;
         default:
             syntax_error("expected type");
     }
@@ -257,6 +260,9 @@ static void parse_simple_statement(void){
         case TOKEN_DOUBLE_LITERAL:
         case TOKEN_STRING_LITERAL:
         case TOKEN_LPAREN:
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+        case TOKEN_NOT:
             scanner_unget(current);
             parse_expr_statement();
             break;
@@ -281,6 +287,8 @@ static void parse_simple_statement(void){
                 case TOKEN_NEQ:
                 case TOKEN_SEMICOLON:
                 case TOKEN_EOL:
+                case TOKEN_AND:
+                case TOKEN_OR:
                     scanner_unget(current);
                     scanner_unget(id_tok);
                     parse_expr_statement();
@@ -324,6 +332,9 @@ static bool is_simple_statement_start(void){
         case TOKEN_DOUBLE_LITERAL:    
         case TOKEN_STRING_LITERAL:    
         case TOKEN_LPAREN:    
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+        case TOKEN_NOT:
             return true;
         default:
             return false;
@@ -348,6 +359,9 @@ static bool is_statement_start(void){
         case TOKEN_DOUBLE_LITERAL:    
         case TOKEN_STRING_LITERAL:    
         case TOKEN_LPAREN:    
+        case TOKEN_TRUE:
+        case TOKEN_FALSE:
+        case TOKEN_NOT:
             return true;
         default:
             return false;
@@ -411,14 +425,22 @@ static void parse_if(void){
     if(current.type != TOKEN_IF){
         syntax_error("expected if");
     }
-        parse_condition();
-        expect(TOKEN_THEN,"expected then");
-        gen_if_start(id);
-        parse_block();
-        expect(TOKEN_ELSE,"expected else");
+    parse_condition();
+    expect(TOKEN_THEN,"expected then");
+    gen_if_start(id);
+    parse_block();
+    if(current.type == TOKEN_ELSE){
+        next();
         gen_if_else(id);
-        parse_block();
-        gen_if_end(id);
+        if(current.type == TOKEN_IF){
+            parse_if();
+        } else {
+            parse_block();
+        }
+    } else {
+        gen_if_else(id);
+    }
+    gen_if_end(id);
 }
 
 /**

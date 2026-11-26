@@ -8,6 +8,11 @@
 int gen_new_label_id(void);
 
 /**
+* @brief vypíše návěští GEN_MAIN pro funkci s anotací @main
+*/
+void gen_main_label(void);
+
+/**
 * @brief čeká na bool na vrcholu zásobníku a skočí na větev else, když je nepravda
 * @param id číslo z konstrukce gen_new_label_id
 */

@@ -7,6 +7,8 @@
 #include "dstring.h"
 #include "error.h"
 
+#define UNGET_STACK_SIZE 2
+
 typedef enum {
     STATE_START,
     STATE_IN_WORD,
@@ -56,11 +58,23 @@ static int current_line = 1;
 static bool has_buffered_token = false;
 static Token buffered_token;
 
+static Token unget_stack[UNGET_STACK_SIZE];
+static int unget_top = 0;
+
 static void free_token_if_allocated(Token *token){
     if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_STRING_LITERAL){
         free(token->attribute.s_val);
         token->attribute.s_val = NULL;
     }
+}
+
+void scanner_unget(Token token){
+    if (unget_top >= UNGET_STACK_SIZE){
+
+        free_token_if_allocated(&token);
+        report_error(ERR_INTERNAL, token.line);
+    }
+    unget_stack[unget_top++] = token;
 }
 
 
@@ -807,6 +821,11 @@ int get_raw_token(Token *token){
 }
 
 int get_next_token(Token *token){
+    if (unget_top > 0){
+        *token = unget_stack[--unget_top];
+        return 0;
+    }
+
     if (pending_dedents > 0){
         pending_dedents--;
         token->type = TOKEN_DEDENT;
@@ -926,6 +945,10 @@ void scanner_reset(void) {
     if (has_buffered_token && 
        (buffered_token.type == TOKEN_IDENTIFIER || buffered_token.type == TOKEN_STRING_LITERAL)) {
         free(buffered_token.attribute.s_val);
+    }
+    while (unget_top > 0) {
+        unget_top--;
+        free_token_if_allocated(&unget_stack[unget_top]);
     }
     top_idx = 0;
     indent_stack[0] = 0;

@@ -78,8 +78,7 @@ static void parse_if(void);
 static void parse_while(void);
 static DataType parse_expr_value(void);
 static void parse_expr_statement(void);
-
-void scanner_unget(Token token);
+static void input_rewind(void){rewind(stdin);}
 
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad
@@ -495,12 +494,47 @@ static void parse_prolog(void){
 }
 
 /**
-* @brief parsuje definici funkce včetně těla
+* @brief přeskočí tělo funkce, použití při prvním průchodu
 */
-static void parse_function(void){ // AI: vytvoření kostry funkce
-    bool is_main = parse_main_annot();
+static void skip_body(void){
+    expect(TOKEN_ASSIGN,"expected =");
+    if(current.type == TOKEN_EOL){
+        expect(TOKEN_EOL,"expected end of line");
+        expect(TOKEN_INDENT,"expected indent");
+        int depth = 1;
+        while(depth > 0){
+            if(current.type == TOKEN_INDENT){
+                depth++;
+            }
+            if(current.type == TOKEN_DEDENT){
+                depth--;
+            }
+            if(current.type == TOKEN_EOF){
+                syntax_error("unexpected end of file");
+            }
+            next();
+        }
+    } else {
+        while(current.type != TOKEN_EOL){
+            if(current.type == TOKEN_EOF){
+                syntax_error("unexpected end of file");
+            }
+            next();
+        }
+        expect(TOKEN_EOL,"expected end of line");
+    }
+}
+
+/**
+* @brief parsuje definici funkce
+* @param name jméno funkce
+* @param is_main true, pokud má funkce anotaci @main
+* @return návratový typ funkce
+*/
+static DataType parse_func_header(char **name,bool *is_main){
+    *is_main = parse_main_annot();
     expect(TOKEN_DEF,"expected def");
-    char *name = current.attribute.s_val;
+    *name = current.attribute.s_val;
     expect(TOKEN_IDENTIFIER,"expected identifier");
     expect(TOKEN_LPAREN,"expected (");
     parse_params();
@@ -509,10 +543,18 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
     if(current.type == TOKEN_COLON){
         next();
         t = parse_type();
-    } else {
-        t = TYPE_UNDEFINED;
     }
-    cur_ret_type = t;
+    return t;
+}
+
+/**
+* @brief zkontroluje @maina vloží funkci s typy parametrů do tabulky symbolů,
+* volá se při prvním průchodu, aby šlo funkci volat i před její definicí
+* @param name jméno funkce
+* @param t návratový typ funkce
+* @param is_main true, pokud má funkce anotaci @main
+*/
+static void declare_function(char *name, DataType t, bool is_main){
     if(is_main){
         if(main_found){
             report_error(ERR_REDEFINITION,current.line);
@@ -534,6 +576,16 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
         report_error(ERR_REDEFINITION, current.line);
     }
     free(f.param_types);
+}
+
+/**
+* @brief parsuje definici funkce včetně těla
+*/
+static void parse_function(void){ // AI: vytvoření kostry funkce
+    char *name;
+    bool is_main;
+    DataType t = parse_func_header(&name,&is_main);
+    cur_ret_type = t;
     symtable_stack_push(&symstack);
     for(int i = 0;i < pcount;i++){
         SymbolData v = symtable_make_var(ptypes[i],false,true,0);
@@ -586,14 +638,30 @@ int parse_program(void){
     if(symtable_init_builtins(&symstack.top->table) != SYMTABLE_OK){
         report_error(ERR_INTERNAL,0);
     }
+    // první průchod
+    next();
+    parse_prolog();
+    while(current.type == TOKEN_DEF || current.type == TOKEN_MAIN){
+        char *name;
+        bool is_main;
+        DataType t = parse_func_header(&name,&is_main);
+        declare_function(name,t,is_main);
+        skip_body();
+    }
+    expect(TOKEN_EOF,"expected end of file");
+    if(!main_found){
+        report_error(ERR_UNDEFINED_SYMBOL,current.line);
+    }
+
+    input_rewind();
+    scanner_reset();
+
+    // druhý průchod
     next();
     parse_prolog();
     while(current.type == TOKEN_DEF || current.type == TOKEN_MAIN){
         parse_function();
     }
     expect(TOKEN_EOF,"expected end of file");
-    if(!main_found){
-        report_error(ERR_UNDEFINED_SYMBOL,current.line);
-    }
     return 0;
 }

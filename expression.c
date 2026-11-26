@@ -5,6 +5,7 @@
 #include "symtable.h"
 #include "scanner.h"
 #include "expression.h"
+#include "gen_base.h"
 
 
 #include <inttypes.h>
@@ -313,18 +314,18 @@ Symbol map_token_to_symbol(TokenType t_type, int paren_count, bool expect_operan
  * @param str Ukazatel na řetězec zakončený znakem '\0'.
  */
 static void gen_pushs_string(const char *str){
-    printf("PUSHS string@");
+    gen_emit("PUSHS string@");
     if(str != NULL){
         for(size_t i = 0; str[i] != '\0'; i++){
             unsigned char c = (unsigned char)str[i];
             if(c <= 32 || c == 35 || c == 92 || c>= 127){
-                printf("\\%03u", c);
+                gen_emit("\\%03u", c);
             }else{
-                putchar(c);
+                gen_emit("%c", c);
             }
         }
     }
-    printf("\n");
+    gen_emit("\n");
 }
 
 /**
@@ -336,11 +337,11 @@ static void gen_pushs_string(const char *str){
 void gen_push_operand(Token token, int scope_id){
     switch (token.type){
         case TOKEN_INT_LITERAL:
-            printf("PUSHS int@%lld\n", token.attribute.i_val);
+            gen_emit("PUSHS int@%lld\n", token.attribute.i_val);
             break;
         
         case TOKEN_DOUBLE_LITERAL:
-            printf("PUSHS float@%a\n", token.attribute.d_val);
+            gen_emit("PUSHS float@%a\n", token.attribute.d_val);
             break;
         
         case TOKEN_STRING_LITERAL:
@@ -348,15 +349,15 @@ void gen_push_operand(Token token, int scope_id){
             break;
         
         case TOKEN_IDENTIFIER:
-            printf("PUSHS LF@%s$%d\n", token.attribute.s_val, scope_id);
+            gen_emit("PUSHS LF@%s$%d\n", token.attribute.s_val, scope_id);
             break;
         
         case TOKEN_TRUE:
-            printf("PUSHS bool@true\n");
+            gen_emit("PUSHS bool@true\n");
             break;
 
         case TOKEN_FALSE:
-            printf("PUSHS bool@false\n");
+            gen_emit("PUSHS bool@false\n");
             break;
         default:
             break;
@@ -371,60 +372,60 @@ void gen_push_operand(Token token, int scope_id){
 void gen_operator(TokenType op_type){
     switch(op_type){
         case TOKEN_PLUS:
-            printf("ADDS\n");
+            gen_emit("ADDS\n");
             break;
         
         case TOKEN_MINUS:
-            printf("SUBS\n");
+            gen_emit("SUBS\n");
             break;
 
         case TOKEN_MUL:
-            printf("MULS\n");
+            gen_emit("MULS\n");
             break;
 
         case TOKEN_DIV:
-            printf("DIVS\n");
+            gen_emit("DIVS\n");
             break;
 
         case TOKEN_EQ:
-            printf("EQS\n");
+            gen_emit("EQS\n");
             break;
         
         case TOKEN_NEQ:
-            printf("EQS\n");
-            printf("NOTS\n");
+            gen_emit("EQS\n");
+            gen_emit("NOTS\n");
             break;
 
         case TOKEN_LESS:
-            printf("LTS\n");
+            gen_emit("LTS\n");
             break;
 
         case TOKEN_GREATER:
-            printf("GTS\n");
+            gen_emit("GTS\n");
             break;
         
         case TOKEN_LESS_EQ:
-            printf("POPS GF@$expr_op2\n");
-            printf("POPS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op2\n");
-            printf("LTS\n");
-            printf("PUSHS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op2\n");
-            printf("EQS\n");
-            printf("ORS\n");
+            gen_emit("POPS GF@$expr_op2\n");
+            gen_emit("POPS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op2\n");
+            gen_emit("LTS\n");
+            gen_emit("PUSHS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op2\n");
+            gen_emit("EQS\n");
+            gen_emit("ORS\n");
             break;
 
         case TOKEN_GREATER_EQ:
-            printf("POPS GF@$expr_op2\n");
-            printf("POPS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op2\n");
-            printf("GTS\n");
-            printf("PUSHS GF@$expr_op1\n");
-            printf("PUSHS GF@$expr_op2\n");
-            printf("EQS\n");
-            printf("ORS\n");
+            gen_emit("POPS GF@$expr_op2\n");
+            gen_emit("POPS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op2\n");
+            gen_emit("GTS\n");
+            gen_emit("PUSHS GF@$expr_op1\n");
+            gen_emit("PUSHS GF@$expr_op2\n");
+            gen_emit("EQS\n");
+            gen_emit("ORS\n");
             break;
         
         default:
@@ -470,7 +471,7 @@ static ExprResult parse_function_call(const SymTableStack *local_stack, const ch
 
             DataType expect_type = func->param_types[arg_count];
             if(expect_type == TYPE_DOUBLE && arg_type == TYPE_INT){
-                printf("INT2FLOATS\n");
+                gen_emit("INT2FLOATS\n");
             }else if(expect_type != TYPE_ANY && arg_type != expect_type){
                 free_token_attr(&stop_tok);
                 return EXPR_ERR_PARAM;
@@ -493,14 +494,21 @@ static ExprResult parse_function_call(const SymTableStack *local_stack, const ch
         return EXPR_ERR_PARAM;
     }
 
-    printf("CREATEFRAME\n");
+    gen_emit("CREATEFRAME\n");
     for (size_t i = arg_count; i> 0; i--){
-        printf("DEFVAR TF@%%param%zu\n", i-1);
-        printf("POPS TF@%%param%zu\n", i-1);
+        gen_emit("DEFVAR TF@%%param%zu\n", i-1);
+        gen_emit("POPS TF@%%param%zu\n", i-1);
     }
 
-    printf("CALL $%s\n", func_name);
-    printf("PUSHS TF@%%retval\n");
+    if(func->is_main){
+        gen_emit("CALL %s\n", GEN_MAIN);
+    }else if(func->is_builtin){
+        gen_emit("CALL $$%s\n", func_name);
+    }else{
+        gen_emit("CALL $%s\n", func_name);
+    }
+    
+    gen_emit("PUSHS TF@%%retval\n");
 
     *ret_type = func->data_type;
     return EXPR_OK;
@@ -585,16 +593,16 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                 int current_label_id = 0;
                 if(input_symbol == AND){
                     current_label_id = ++logic_label_counter;
-                    printf("POPS GF@$expr_op1\n");
-                    printf("PUSHS GF@$expr_op1\n");
-                    printf("JUMPIFEQ $and_end_%d GF@$expr_op1 bool@false\n", current_label_id);
-                    printf("POPS GF@$expr_op1\n");
+                    gen_emit("POPS GF@$expr_op1\n");
+                    gen_emit("PUSHS GF@$expr_op1\n");
+                    gen_emit("JUMPIFEQ $$and_end_%d GF@$expr_op1 bool@false\n", current_label_id);
+                    gen_emit("POPS GF@$expr_op1\n");
                 }else if(input_symbol == OR){
                     current_label_id = ++logic_label_counter;
-                    printf("POPS GF@$expr_op1\n");
-                    printf("PUSHS GF@$expr_op1\n");
-                    printf("JUMPIFEQ $or_end_%d GF@$expr_op1 bool@true\n", current_label_id);
-                    printf("POPS GF@$expr_op1\n");
+                    gen_emit("POPS GF@$expr_op1\n");
+                    gen_emit("PUSHS GF@$expr_op1\n");
+                    gen_emit("JUMPIFEQ $$or_end_%d GF@$expr_op1 bool@true\n", current_label_id);
+                    gen_emit("POPS GF@$expr_op1\n");
                 }
 
                 StackItem input_item = {(StackSymbol)input_symbol, current_token, TYPE_UNDEFINED, current_label_id};
@@ -699,7 +707,7 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                 }
                 //pravidlo E -> ()
                 if(handle_len == 2 && handle[0].type == STACK_R_PAR && handle[1].type == STACK_L_PAR){
-                    printf("PUSHS nil@nil\n");
+                    gen_emit("PUSHS nil@nil\n");
                     StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_UNIT, 0};
 
                     if(!stack_push(&s, non_term)){
@@ -727,15 +735,15 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                     if(operand == TOKEN_PLUS && type1 == TYPE_STRING && type2 == TYPE_STRING){
                          result_type = TYPE_STRING;
 
-                         printf("POPS GF@$expr_op2\n");
-                         printf("POPS GF@$expr_op1\n");
-                         printf("CONCAT GF@$expr_op1 GF@$expr_op1 GF@$expr_op2\n");
-                         printf("PUSHS GF@$expr_op1\n");
+                         gen_emit("POPS GF@$expr_op2\n");
+                         gen_emit("POPS GF@$expr_op1\n");
+                         gen_emit("CONCAT GF@$expr_op1 GF@$expr_op1 GF@$expr_op2\n");
+                         gen_emit("PUSHS GF@$expr_op1\n");
 
                     }else if(type1 == TYPE_INT && type2 == TYPE_INT){
                         result_type = TYPE_INT;
                         if(operand == TOKEN_DIV){
-                            printf("IDIVS\n"); //celočíselné dělení
+                            gen_emit("IDIVS\n"); //celočíselné dělení
                         }else{
                             gen_operator(operand);
                         }
@@ -744,13 +752,13 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                         gen_operator(operand);
                     }else if (type1 == TYPE_DOUBLE && type2 == TYPE_INT){
                         result_type = TYPE_DOUBLE;
-                        printf("INT2FLOATS\n");
+                        gen_emit("INT2FLOATS\n");
                         gen_operator(operand);
                     }else if (type1 == TYPE_INT && type2 == TYPE_DOUBLE){
                         result_type = TYPE_DOUBLE;
-                        printf("POPS GF@$expr_op2\n"); //v GF nadefinovaná pomocná proměnná
-                        printf("INT2FLOATS\n");
-                        printf("PUSHS GF@$expr_op2\n");
+                        gen_emit("POPS GF@$expr_op2\n"); //v GF nadefinovaná pomocná proměnná
+                        gen_emit("INT2FLOATS\n");
+                        gen_emit("PUSHS GF@$expr_op2\n");
                         gen_operator(operand);
                     }else{
                         free_token_attr(&current_token);
@@ -779,11 +787,11 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                     TokenType operand = handle[1].token.type;
                 
                     if(type1 == TYPE_DOUBLE && type2 == TYPE_INT){
-                        printf("INT2FLOATS\n");
+                        gen_emit("INT2FLOATS\n");
                     }else if(type1 == TYPE_INT && type2 == TYPE_DOUBLE){
-                        printf("POPS GF@$expr_op2\n");
-                        printf("INT2FLOATS\n");
-                        printf("PUSHS GF@$expr_op2\n");
+                        gen_emit("POPS GF@$expr_op2\n");
+                        gen_emit("INT2FLOATS\n");
+                        gen_emit("PUSHS GF@$expr_op2\n");
                     }else if(type1 == TYPE_INT && type2 == TYPE_INT){
                         //OK
                     }else if(type1 == TYPE_DOUBLE && type2 == TYPE_DOUBLE){
@@ -874,17 +882,17 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
 
                     if(current_type == TYPE_INT){
                         if(handle[1].token.type == TOKEN_MINUS){
-                            printf("POPS GF@$expr_op1\n");
-                            printf("PUSHS int@0\n");
-                            printf("PUSHS GF@$expr_op1\n");
-                            printf("SUBS\n");
+                            gen_emit("POPS GF@$expr_op1\n");
+                            gen_emit("PUSHS int@0\n");
+                            gen_emit("PUSHS GF@$expr_op1\n");
+                            gen_emit("SUBS\n");
                         }
                     }else if(current_type == TYPE_DOUBLE){
                         if(handle[1].token.type == TOKEN_MINUS){
-                            printf("POPS GF@$expr_op1\n");
-                            printf("PUSHS float@0x0p+0\n");
-                            printf("PUSHS GF@$expr_op1\n");
-                            printf("SUBS\n");
+                            gen_emit("POPS GF@$expr_op1\n");
+                            gen_emit("PUSHS float@0x0p+0\n");
+                            gen_emit("PUSHS GF@$expr_op1\n");
+                            gen_emit("SUBS\n");
                         }
                     }else{
                         free_token_attr(&current_token);
@@ -906,7 +914,7 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                         stack_free(&s);
                         return EXPR_ERR_SEMANTIC;
                     }
-                    printf("NOTS\n");
+                    gen_emit("NOTS\n");
                     StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL, 0};
                     if(!stack_push(&s, non_term)){
                         free_token_attr(&current_token);
@@ -924,9 +932,9 @@ static ExprResult parse_expression_internal(const SymTableStack *local_stack, Da
                         return EXPR_ERR_SEMANTIC;
                     }
                     if(handle[1].type == STACK_AND){
-                        printf("LABEL $and_end_%d\n", handle[1].label_id);
+                        gen_emit("LABEL $$and_end_%d\n", handle[1].label_id);
                     }else{
-                        printf("LABEL $or_end_%d\n", handle[1].label_id);
+                        gen_emit("LABEL $$or_end_%d\n", handle[1].label_id);
                     }
 
                     StackItem non_term = {STACK_NON_TERM, empty_token, TYPE_BOOL, 0};

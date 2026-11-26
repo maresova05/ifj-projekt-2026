@@ -78,7 +78,7 @@ typedef struct {
 } Token;
 
 int get_next_token(Token *token);
-void scanner_unget(Token *token);
+void scanner_unget(Token token);
 void scanner_reset(void);
 
 

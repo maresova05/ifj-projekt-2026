@@ -8,6 +8,7 @@
 #include "gen_control.h"
 #include "symtable.h"
 #include "gen_base.h"
+#include "input.h"
 
 static Token current; // aktuální token
 
@@ -78,7 +79,6 @@ static void parse_if(void);
 static void parse_while(void);
 static DataType parse_expr_value(void);
 static void parse_expr_statement(void);
-static void input_rewind(void){rewind(stdin);}
 
 /**
 * @brief ohlásí syntaktickou chybu a ukončí překlad

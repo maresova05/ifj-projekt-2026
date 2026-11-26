@@ -423,7 +423,6 @@ void gen_operator(TokenType op_type){
             printf("GTS\n");
             printf("PUSHS GF@$expr_op1\n");
             printf("PUSHS GF@$expr_op2\n");
-            printf("PUSHS GF@$expr_op1\n");
             printf("EQS\n");
             printf("ORS\n");
             break;
@@ -470,7 +469,9 @@ static ExprResult parse_function_call(const SymTableStack *local_stack, const ch
             }
 
             DataType expect_type = func->param_types[arg_count];
-            if(expect_type != TYPE_ANY && arg_type != expect_type){
+            if(expect_type == TYPE_DOUBLE && arg_type == TYPE_INT){
+                printf("INT2FLOATS\n");
+            }else if(expect_type != TYPE_ANY && arg_type != expect_type){
                 free_token_attr(&stop_tok);
                 return EXPR_ERR_PARAM;
             }

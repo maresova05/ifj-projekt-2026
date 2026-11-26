@@ -2,7 +2,7 @@
     IFJ a IAL projekt
     xbartlm00 Matěj Bártl
 */
-
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include "input.h"
 #include "dstring.h"

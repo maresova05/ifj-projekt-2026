@@ -48,12 +48,12 @@ typedef enum {
 } Action;
 
 const Action precedence_table[SIZE][SIZE] = {
-    // +-   !   */  +- CMP  EQ,  &&  ||  (   )   ID  $
+    //+- ! */  +- CMP  EQ,  &&  ||  (   )   ID  $
     {S, S, R, R, R, R, R, R, S, R, S, R}, // +-
     {S, S, R, R, R, R, R, R, S, R, S, R}, // !
     {S, S, R, R, R, R, R, R, S, R, S, R}, // */
     {S, S, S, R, R, R, R, R, S, R, S, R}, // +-
-    {S, S, S, S, X, R, R, R, S, R, S, R}, // REL
+    {S, S, S, S, X, R, R, R, S, R, S, R}, // CMP
     {S, S, S, S, S, X, R, R, S, R, S, R}, // EQ
     {S, S, S, S, S, S, R, R, S, R, S, R}, // &&
     {S, S, S, S, S, S, S, R, S, R, S, R}, // ||

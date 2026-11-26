@@ -57,3 +57,11 @@ void gen_return_value(void){
     printf("POPFRAME\n");
     printf("RETURN\n");
 }
+
+void gen_expr_discard(void){
+    printf("POPS GF@$expr_op1\n");
+}
+
+void gen_expr_to_retval(void){
+    printf("POPS LF@%%retval\n");
+}

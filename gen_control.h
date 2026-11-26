@@ -67,4 +67,14 @@ void gen_func_param(const char *name, int scope_id, int index);
 */
 void gen_return_value(void);
 
+/**
+* @brief vypíše POPS GF@$expr_op1 a hodnotu ze zásobníku zahodí
+*/
+void gen_expr_discard(void);
+
+/**
+* @brief vypíše POPS LF@%retval a hodnotu uloží jako návratovou
+*/
+void gen_expr_to_retval(void);
+
 #endif

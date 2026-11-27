@@ -4,9 +4,15 @@
 */
 
 #include <stdio.h>
+#include "parser.h"
+#include "gen_base.h"
+#include "input.h"
 
 int main(){
-    // provizorní výpis, později bude vypisován generátorem
-    printf(".IFJcode26\n");     
+    input_load();
+    gen_head();
+    gen_start(); 
+    parse_program();
+    input_free();    
     return 0;
 }

@@ -9,6 +9,7 @@
 #include "gen_base.h"
 #include "dstring.h"
 #include "error.h"
+#include "builtins.h"
 
 
 static int cycle_depth = 0;
@@ -51,6 +52,7 @@ void gen_start(void){
     gen_emit("CREATEFRAME\n");
     gen_emit("CALL %s\n",GEN_MAIN);
     gen_emit("EXIT int@0\n");
+    gen_buildins();
 }
 
 void gen_emit(const char *format, ...){

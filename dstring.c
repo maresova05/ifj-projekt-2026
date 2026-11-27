@@ -2,7 +2,7 @@
  * Soubor: dstring.c
  * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
  * Autoři:
- * - Vojtěch Kouebk, xkoubev00
+ * - Vojtěch Koubek, xkoubev00
  */
 #include "dstring.h"
 #include <stdlib.h>

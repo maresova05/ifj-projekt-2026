@@ -230,6 +230,7 @@ static SymTableResult register_builtin(SymTable *table, const char *name, DataTy
     SymbolData fn = symtable_make_func(ret_type, true, true, false);
     fn.param_types = (DataType *)params;
     fn.param_count = param_count;
+    fn.is_builtin = true;
     return symtable_insert(table, name, &fn);
 }
 
@@ -252,7 +253,7 @@ SymTableResult symtable_init_builtins(SymTable *global_table){
     if ((rc = register_builtin(global_table, "toStr", TYPE_STRING, p_any, 1)) != SYMTABLE_OK) return rc;
     if ((rc = register_builtin(global_table, "toInt", TYPE_INT, p_double, 1)) != SYMTABLE_OK) return rc;
     if ((rc = register_builtin(global_table, "strLength", TYPE_INT, p_string, 1)) != SYMTABLE_OK) return rc;
-    if ((rc = register_builtin(global_table, "substr", TYPE_STRING, p_substr, 3)) != SYMTABLE_OK) return rc;
+    if ((rc = register_builtin(global_table, "subStr", TYPE_STRING, p_substr, 3)) != SYMTABLE_OK) return rc;
     if ((rc = register_builtin(global_table, "ord", TYPE_INT, p_ord, 2)) != SYMTABLE_OK) return rc;
     if ((rc = register_builtin(global_table, "chr", TYPE_STRING, p_int, 1)) != SYMTABLE_OK) return rc;
 

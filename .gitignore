@@ -3,7 +3,10 @@
 *.d
 # výsledný program
 /main
-# testovaci program pro slinkovani
-tests/tokdump.c
-# testovaci program pro gen_base
-tests/gen_test.c
+# testovací program pro slinkování
+/tokdump
+# testovací programy jednotlivých modulů
+/gen_test
+/input_test
+/builtins_test
+/out.code

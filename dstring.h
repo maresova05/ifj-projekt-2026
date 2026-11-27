@@ -1,3 +1,9 @@
+/*
+ * Soubor: dstring.h
+ * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
+ * Autoři:
+ * - Vojtěch Kouebk, xkoubev00
+ */
 #ifndef DSTRING_H
 #define DSTRING_H
 

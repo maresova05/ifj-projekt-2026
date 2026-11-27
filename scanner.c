@@ -1,3 +1,9 @@
+/*
+ * Soubor: scanner.c
+ * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
+ * Autoři:
+ * - Vojtěch Kouebk, xkoubev00
+ */
 #include "scanner.h"
 #include "dstring.h"
 #include "error.h"

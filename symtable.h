@@ -39,6 +39,7 @@ typedef struct {
     bool is_defined;
     bool has_explicit_return_type;
     bool is_main;
+    bool is_builtin;
     DataType *param_types;
     size_t param_count;
 

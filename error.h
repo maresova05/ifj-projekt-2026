@@ -18,10 +18,10 @@ typedef enum{
     ERR_INTERNAL = 99              // interní chyba překladače
 }Error_code;
 
-/*
-ukončí program s hodnotou kódu a vypíše hlášení o chybě na stderr
-@param Error_code err, kód chyby, která vznikla 
-@param int line, číslo řádku na kterém chyba vznikla, pokud zapsaná hodnota čísla řádku menší jak 1, tak se řádek nevypíše 
+/**
+* @brief ukončí program s hodnotou kódu a vypíše hlášení o chybě na stderr
+* @param Error_code err, kód chyby, která vznikla 
+* @param int line, číslo řádku na kterém chyba vznikla, pokud zapsaná hodnota čísla řádku menší jak 1, tak se řádek nevypíše 
 */
 __attribute__((noreturn))
 void report_error(Error_code err,int line);

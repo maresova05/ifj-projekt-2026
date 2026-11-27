@@ -1,3 +1,11 @@
+/**
+ * @file parser.h
+ * @brief Rozhraní syntaktického analyzátoru 
+ * Projekt: Implementace překladače imperativního jazyka IFJ26
+ *
+ * @author Jan Dobrovolný (xdobroj00)
+ */
+
 #ifndef PARSER_H
 #define PARSER_H
 

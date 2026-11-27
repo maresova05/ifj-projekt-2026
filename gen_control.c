@@ -1,3 +1,12 @@
+/**
+ * @file gen_control.c
+ * @brief Generování kódu IFJcode26 pro if,while a definice funkcí
+ *
+ * Projekt: Implementace překladače imperativního jazyka IFJ26
+ *
+ * @author Jan Dobrovolný (xdobroj00)
+ */
+
 #include <stdio.h>
 #include "gen_control.h"
 #include "gen_base.h"

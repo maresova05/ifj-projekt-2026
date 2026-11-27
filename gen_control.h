@@ -1,3 +1,11 @@
+/**
+ * @file gen_control.h
+ * @brief Rozhraní generátoru řídících konstrukcí a funkcí
+ * Projekt: Implementace překladače imperativního jazyka IFJ26
+ *
+ * @author Jan Dobrovolný (xdobroj00)
+ */
+
 #ifndef GEN_CONTROL_H
 #define GEN_CONTROL_H
 

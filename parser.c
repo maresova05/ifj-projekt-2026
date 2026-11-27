@@ -1,3 +1,12 @@
+/**
+ * @file parser.c
+ * @brief Syntaktická analýza rekurzivním sestupem, dva průchody, napojení na sémantiku a generování kódu
+ *
+ * Projekt: Implementace překladače imperativního jazyka IFJ26
+ *
+ * @author Jan Dobrovolný (xdobroj00)
+ */
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -133,7 +142,8 @@ static void expect(TokenType type, const char *msg){
 }
 
 /**
-* @brief parsuje typ (<type>)
+* @brief parsuje typ (<type>) pravidla 12,13,14,15,16
+* @return vrací datový typ podle aktuálního tokenu
 */
 static DataType parse_type(void){
     DataType t = TYPE_UNDEFINED;
@@ -161,7 +171,7 @@ static DataType parse_type(void){
 }
 
 /**
-* @brief parsuje příkazy (<statement>)
+* @brief parsuje příkazy (<statement>) pravidla 29,30,31
 */
 static void parse_statement(void){
     if(block_depth == 1){
@@ -195,7 +205,9 @@ static void parse_expr_statement(void){
     }
     if(block_depth == 1 && cur_ret_type != TYPE_UNIT){ 
         if(cur_ret_type != TYPE_UNDEFINED){
-            check_compat(cur_ret_type,t);
+            if(!check_compat(cur_ret_type,t)){
+                report_error(ERR_TYPE,current.line);
+            }
         }
         gen_expr_to_retval(); // poslední výraz těla je návratová hodnota
     } else {
@@ -204,7 +216,7 @@ static void parse_expr_statement(void){
 }
 
 /**
-* @brief parsuje definici proměnné val/var
+* @brief parsuje definici proměnné val/var, pravidla 53,54
 */
 static void parse_var_def(void){
     bool is_mutable = (current.type == TOKEN_VAR);
@@ -225,7 +237,7 @@ static void parse_var_def(void){
 }
 
 /**
-* @brief parsuje return s volitelnou hodnotou (<return>)
+* @brief parsuje return s volitelnou hodnotou (<return>) pravidla 44,45,46
 */
 static void parse_return(void){
     if(cur_ret_type == TYPE_UNDEFINED){
@@ -253,7 +265,7 @@ static void parse_return(void){
 }
 
 /**
-* @brief parsuje přiřazení (<assign>)
+* @brief parsuje přiřazení (<assign>) pravidlo 41
 */
 static void parse_assign(const char *name){
     if(current.type != TOKEN_ASSIGN){
@@ -264,7 +276,7 @@ static void parse_assign(const char *name){
 }
 
 /**
-* @brief rozhoduje podle prvního a pro identifikátor druhého tokenu (<simple_stmt>)
+* @brief rozhoduje podle prvního a pro identifikátor druhého tokenu (<simple_stmt>) pravidla 37-43
 */
 static void parse_simple_statement(void){
     switch(current.type){
@@ -315,17 +327,18 @@ static void parse_simple_statement(void){
                     parse_expr_statement();
                     break;
                 default:
-                    syntax_error("expected statement");
+                    syntax_error("unexpected token after identifier");
             }
             break;
         }
         default:
-            syntax_error("unexpected token after identifier");
+            syntax_error("expected statement");
     }
 }
 
 /**
-* @brief parsuje příkazy, dokud v tokenech přichází příkaz -> středník -> příkaz atd. (<simple_list>)
+* @brief parsuje příkazy, dokud v tokenech přichází příkaz -> středník -> příkaz atd. 
+* (<simple_list>) pravidla 32,33,34,35,36
 */
 static void parse_simple_list(void){
     parse_simple_statement();
@@ -390,7 +403,7 @@ static bool is_statement_start(void){
 }
 
 /**
-* @brief cyklem projede seznam příkazů (<statements>)
+* @brief cyklem projede seznam příkazů (<statements>) pravidla 26,27,28
 */
 static void parse_statements(void){
     parse_statement();
@@ -400,7 +413,7 @@ static void parse_statements(void){
 }
 
 /**
-* @brief parsuje blok, uvnitř cyklus příkazů (<block>)
+* @brief parsuje blok, uvnitř cyklus příkazů (<block>) pravidlo 25
 */
 static void parse_block(void){
     block_depth++;
@@ -439,7 +452,7 @@ static void parse_condition(void){
 }
 
 /**
-* @brief parsuje podmíněný příkaz (<if>)
+* @brief parsuje podmíněný příkaz (<if>) pravidla 47-51
 */
 static void parse_if(void){
     int id = gen_new_label_id();
@@ -465,7 +478,7 @@ static void parse_if(void){
 }
 
 /**
-* @brief parsuje cyklus (<while>)
+* @brief parsuje cyklus (<while>) pravidlo 52
 */
 static void parse_while(void){
     int id = gen_new_label_id();
@@ -481,7 +494,7 @@ static void parse_while(void){
 }
 
 /**
-* @brief parsuje parametr (<param>)
+* @brief parsuje parametr (<param>) pravidlo 24
 */
 static void parse_param(void){
     if(pcount >= MAX_PARAMS){
@@ -495,7 +508,7 @@ static void parse_param(void){
 }
 
 /**
-* @brief parsuje seznam parametrů (<params>)
+* @brief parsuje seznam parametrů (<params>) pravidla 19,20,21,22,23
 */
 static void parse_params(void){
     pcount = 0;
@@ -510,7 +523,7 @@ static void parse_params(void){
     }
 
 /**
-* @brief parsuje anotaci @main (<main_annot>)
+* @brief parsuje anotaci @main (<main_annot>) pravidla 6,7,8,9
 * @return vrací true, pokud je funkce main, false když není
 */
 static bool parse_main_annot(void){
@@ -526,7 +539,7 @@ static bool parse_main_annot(void){
 }
 
 /**
-* @brief parsuje úvodní import (<prolog>)
+* @brief parsuje úvodní import (<prolog>) pravidlo 2
 */
 static void parse_prolog(void){
     expect(TOKEN_IMPORT,"expected import");
@@ -570,7 +583,7 @@ static void skip_body(void){
 }
 
 /**
-* @brief parsuje definici funkce
+* @brief parsuje hlavičku funkce
 * @param name jméno funkce
 * @param is_main true, pokud má funkce anotaci @main
 * @return návratový typ funkce
@@ -622,10 +635,11 @@ static void declare_function(char *name, DataType t, bool is_main){
     free(f.param_types);
 }
 
+// AI: vytvoření kostry funkce, prompt "vytvoř kostru funkce parse_function, abych věděl, jak začít"
 /**
-* @brief parsuje definici funkce včetně těla (<function>)
+* @brief parsuje definici funkce včetně těla (<function>) pravidla 5,10,11,17,18 (společné s hlavičkou)
 */
-static void parse_function(void){ // AI: vytvoření kostry funkce, prompt "vytvoř kostru funkce parse_function, abych věděl, jak začít"
+static void parse_function(void){ 
     char *name;
     bool is_main;
     DataType t = parse_func_header(&name,&is_main);
@@ -671,7 +685,7 @@ static void parse_function(void){ // AI: vytvoření kostry funkce, prompt "vytv
 }
 
 /**
-* @brief syntaktická analýza programu rekurzivním sestupem (<program>)
+* @brief syntaktická analýza programu rekurzivním sestupem (<program>) pravidla 1,3,4
 * @return vrací 0 při úspěchu, při syntaktické chybě ukončí překlad s kódem 2
 */
 int parse_program(void){
@@ -698,7 +712,7 @@ int parse_program(void){
     }
 
     input_rewind(); // vrátí čtení na začátek
-    scanner_reset(); // vynuluje zásobník
+    scanner_reset(); // vynuluje zásobník, vrací lexer do počátečního stavu
 
     // druhý průchod
     next();

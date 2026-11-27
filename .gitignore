@@ -1,0 +1,12 @@
+# pomocné soubory Makefile
+*.o
+*.d
+# výsledný program
+/main
+# testovací program pro slinkování
+/tokdump
+# testovací programy jednotlivých modulů
+/gen_test
+/input_test
+/builtins_test
+/out.code

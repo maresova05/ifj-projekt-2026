@@ -1,0 +1,8 @@
+import ifj26.*
+
+@main def run(): Unit =
+    var i = 0
+    while i < 3 do
+        val x = i * 2
+        print(x)
+        i = i + 1

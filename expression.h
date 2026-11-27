@@ -2,9 +2,6 @@
  * Soubor: expression.h
  * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
  * Autoři:
- * - Bártl Matěj, xbartlm00
- * - Vojtěch Kouebk, xkoubev00
- * - Jan Dobrovolný, xdobroj00
  * - Veronika Marešová, xmaresv01
  */
 

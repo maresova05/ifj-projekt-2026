@@ -2,14 +2,14 @@
  * Soubor: symtable.h
  * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
  * Autoři:
- * - Vojtěch Kouebk, xkoubev00
+ * - Vojtěch Koubek, xkoubev00
  */
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 
 #include <stdbool.h>
 #include <stddef.h>
-
+ 
 /*
  * @brief Návratové kódy operací nad tabulkou symbolů
  */

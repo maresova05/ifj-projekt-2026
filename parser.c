@@ -28,6 +28,24 @@ static DataType ptypes[MAX_PARAMS];
 static int pcount;
 
 /**
+* @brief kontroluje typy int a double, popřípadě převede
+* @param target očekávaný typ
+* @param src typ výrazu, hodnota na vrchu zásobníku
+* @return true, když jsou typy kompatibilní, jinak false 
+*/
+static bool check_compat(DataType target,DataType src){
+    if(target == src){
+        return true;
+    }
+    if(target == TYPE_DOUBLE && src == TYPE_INT){
+        gen_emit("INT2FLOATS\n");
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/**
 * @brief založí novou proměnnou
 * @param name jméno proměnné
 * @param is_mutable false, pokud je value a true, pokud je variable
@@ -38,7 +56,7 @@ static void sem_var_def(const char *name, bool is_mutable, DataType declared, Da
     if(declared == TYPE_UNDEFINED){
         declared = expr_type;
     }
-    if(expr_type != declared){
+    if(!check_compat(declared,expr_type)){
         report_error(ERR_TYPE,current.line);
     }
     SymbolData s = symtable_make_var(declared, is_mutable,false,symstack.top->scope_id);
@@ -63,7 +81,7 @@ static void sem_assign(const char *name, DataType expr_type){
     if(s->is_mutable == false){
         report_error(ERR_IMMUTABLE,current.line);
     }
-    if(expr_type != s->data_type){
+    if(!check_compat(s->data_type,expr_type)){
         report_error(ERR_TYPE,current.line);
     }
     gen_emit("POPS LF@%s$%d\n",name,s->scope_id);
@@ -115,7 +133,7 @@ static void expect(TokenType type, const char *msg){
 }
 
 /**
-* @brief parsuje typ (pravidlo 12)
+* @brief parsuje typ (<type>)
 */
 static DataType parse_type(void){
     DataType t = TYPE_UNDEFINED;
@@ -143,11 +161,11 @@ static DataType parse_type(void){
 }
 
 /**
-* @brief parsuje příkazy (pravidla 26 až 28)
+* @brief parsuje příkazy (<statement>)
 */
 static void parse_statement(void){
     if(block_depth == 1){
-        last_body_type = TYPE_UNIT;
+        last_body_type = TYPE_UNIT; // blok, který nekončí výrazem je Unit
     }
     switch(current.type){
         case TOKEN_IF:
@@ -175,10 +193,13 @@ static void parse_expr_statement(void){
     if(block_depth == 1){
         last_body_type = t;
     }
-    if(block_depth == 1 && cur_ret_type != TYPE_UNIT){
-        gen_expr_to_retval();
+    if(block_depth == 1 && cur_ret_type != TYPE_UNIT){ 
+        if(cur_ret_type != TYPE_UNDEFINED){
+            check_compat(cur_ret_type,t);
+        }
+        gen_expr_to_retval(); // poslední výraz těla je návratová hodnota
     } else {
-        gen_expr_discard();
+        gen_expr_discard(); // ve vnořených blocích a Unit se zahazuje
     }
 }
 
@@ -204,7 +225,7 @@ static void parse_var_def(void){
 }
 
 /**
-* @brief parsuje return s volitelnou hodnotou
+* @brief parsuje return s volitelnou hodnotou (<return>)
 */
 static void parse_return(void){
     if(cur_ret_type == TYPE_UNDEFINED){
@@ -225,14 +246,14 @@ static void parse_return(void){
         gen_func_end();
         return;
     }
-    if(cur_ret_type != t){
+    if(!check_compat(cur_ret_type,t)){
         report_error(ERR_TYPE,current.line);
     }
     gen_return_value();
 }
 
 /**
-* @brief parsuje přiřazení 
+* @brief parsuje přiřazení (<assign>)
 */
 static void parse_assign(const char *name){
     if(current.type != TOKEN_ASSIGN){
@@ -243,7 +264,7 @@ static void parse_assign(const char *name){
 }
 
 /**
-* @brief rozhoduje podle prvního a pro identifikátor druhého tokenu (pravidla 34 - 41)
+* @brief rozhoduje podle prvního a pro identifikátor druhého tokenu (<simple_stmt>)
 */
 static void parse_simple_statement(void){
     switch(current.type){
@@ -290,21 +311,21 @@ static void parse_simple_statement(void){
                 case TOKEN_AND:
                 case TOKEN_OR:
                     scanner_unget(current);
-                    scanner_unget(id_tok);
+                    scanner_unget(id_tok); // rozhoduje až druhý token, vrací se v opačném pořadí
                     parse_expr_statement();
                     break;
                 default:
-                    syntax_error("expected something");
+                    syntax_error("expected statement");
             }
             break;
         }
         default:
-            syntax_error("expected something");
+            syntax_error("unexpected token after identifier");
     }
 }
 
 /**
-* @brief parsuje příkazy, dokud v tokenech přichází příkaz -> středník -> příkaz atd.
+* @brief parsuje příkazy, dokud v tokenech přichází příkaz -> středník -> příkaz atd. (<simple_list>)
 */
 static void parse_simple_list(void){
     parse_simple_statement();
@@ -369,7 +390,7 @@ static bool is_statement_start(void){
 }
 
 /**
-* @brief cyklem projede seznam příkazů
+* @brief cyklem projede seznam příkazů (<statements>)
 */
 static void parse_statements(void){
     parse_statement();
@@ -379,7 +400,7 @@ static void parse_statements(void){
 }
 
 /**
-* @brief parsuje blok, uvnitř cyklus příkazů, (pravidlo 22)
+* @brief parsuje blok, uvnitř cyklus příkazů (<block>)
 */
 static void parse_block(void){
     block_depth++;
@@ -408,7 +429,7 @@ static DataType parse_expr_value(void){
 }
 
 /**
-* @brief zpracuje podmínku if/while, výsledek musí být bool
+* @brief zpracuje podmínku if/while, výsledek musí být bool (<condition>)
 */
 static void parse_condition(void){
     DataType type = parse_expr_value();
@@ -418,7 +439,7 @@ static void parse_condition(void){
 }
 
 /**
-* @brief parsuje podmíněný příkaz (pravidlo 67)
+* @brief parsuje podmíněný příkaz (<if>)
 */
 static void parse_if(void){
     int id = gen_new_label_id();
@@ -427,7 +448,7 @@ static void parse_if(void){
     }
     parse_condition();
     expect(TOKEN_THEN,"expected then");
-    gen_if_start(id);
+    gen_if_start(id); // skáče na návěští else, musí být i prázdné
     parse_block();
     if(current.type == TOKEN_ELSE){
         next();
@@ -444,7 +465,7 @@ static void parse_if(void){
 }
 
 /**
-* @brief parsuje cyklus (pravidlo 68)
+* @brief parsuje cyklus (<while>)
 */
 static void parse_while(void){
     int id = gen_new_label_id();
@@ -460,7 +481,7 @@ static void parse_while(void){
 }
 
 /**
-* @brief parsuje parametr
+* @brief parsuje parametr (<param>)
 */
 static void parse_param(void){
     if(pcount >= MAX_PARAMS){
@@ -474,7 +495,7 @@ static void parse_param(void){
 }
 
 /**
-* @brief parsuje seznam parametrů
+* @brief parsuje seznam parametrů (<params>)
 */
 static void parse_params(void){
     pcount = 0;
@@ -489,8 +510,8 @@ static void parse_params(void){
     }
 
 /**
-* @brief parsuje anotaci @main 
-* @return vrací true nebo false
+* @brief parsuje anotaci @main (<main_annot>)
+* @return vrací true, pokud je funkce main, false když není
 */
 static bool parse_main_annot(void){
     bool is_main = false;
@@ -505,7 +526,7 @@ static bool parse_main_annot(void){
 }
 
 /**
-* @brief parsuje úvodní import
+* @brief parsuje úvodní import (<prolog>)
 */
 static void parse_prolog(void){
     expect(TOKEN_IMPORT,"expected import");
@@ -516,7 +537,8 @@ static void parse_prolog(void){
 }
 
 /**
-* @brief přeskočí tělo funkce, použití při prvním průchodu
+* @brief přeskočí tělo funkce, použití při prvním průchodu, kód nevznikne dvakrát,
+* umožňuje volat funkce definované níž
 */
 static void skip_body(void){
     expect(TOKEN_ASSIGN,"expected =");
@@ -570,7 +592,7 @@ static DataType parse_func_header(char **name,bool *is_main){
 }
 
 /**
-* @brief zkontroluje @maina vloží funkci s typy parametrů do tabulky symbolů,
+* @brief zkontroluje @main a vloží funkci s typy parametrů do tabulky symbolů,
 * volá se při prvním průchodu, aby šlo funkci volat i před její definicí
 * @param name jméno funkce
 * @param t návratový typ funkce
@@ -601,9 +623,9 @@ static void declare_function(char *name, DataType t, bool is_main){
 }
 
 /**
-* @brief parsuje definici funkce včetně těla
+* @brief parsuje definici funkce včetně těla (<function>)
 */
-static void parse_function(void){ // AI: vytvoření kostry funkce
+static void parse_function(void){ // AI: vytvoření kostry funkce, prompt "vytvoř kostru funkce parse_function, abych věděl, jak začít"
     char *name;
     bool is_main;
     DataType t = parse_func_header(&name,&is_main);
@@ -632,7 +654,7 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
         if(cur_ret_type == TYPE_UNIT){
             gen_expr_discard();
         } else {
-        if (cur_ret_type != TYPE_UNDEFINED && cur_ret_type != pt){
+        if (cur_ret_type != TYPE_UNDEFINED && !check_compat(cur_ret_type,pt)){
             report_error(ERR_TYPE,current.line);
         }
         last_body_type = pt;
@@ -649,7 +671,7 @@ static void parse_function(void){ // AI: vytvoření kostry funkce
 }
 
 /**
-* @brief syntaktická analýza programu rekurzivním sestupem
+* @brief syntaktická analýza programu rekurzivním sestupem (<program>)
 * @return vrací 0 při úspěchu, při syntaktické chybě ukončí překlad s kódem 2
 */
 int parse_program(void){
@@ -675,8 +697,8 @@ int parse_program(void){
         report_error(ERR_UNDEFINED_SYMBOL,current.line);
     }
 
-    input_rewind();
-    scanner_reset();
+    input_rewind(); // vrátí čtení na začátek
+    scanner_reset(); // vynuluje zásobník
 
     // druhý průchod
     next();

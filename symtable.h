@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-
+ 
 /*
  * @brief Návratové kódy operací nad tabulkou symbolů
  */

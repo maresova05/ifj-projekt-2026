@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
+ 
 /*
  * @brief Interní uzel AVL binárního vyhledávacího stromu
  */

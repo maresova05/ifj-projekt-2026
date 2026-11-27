@@ -1,90 +1,107 @@
+/*
+ * Soubor: scanner.h
+ * Projekt: Překladač jazyka IFJ26 (IFJ/IAL 2026/2027)
+ * Autoři:
+ * - Vojtěch Kouebk, xkoubev00
+ */
 #ifndef SCANNER_H
 #define SCANNER_H
 
-
+/*
+ * @brief Všechny typy tokenů, které lexikální analyzátor pozná
+ */
 typedef enum {
-    //1. Speciální tokeny
-    TOKEN_EOF, //konec souboru
-    TOKEN_EOL, //konec řádku
-    TOKEN_INDENT, //zvětšení odsazení
-    TOKEN_DEDENT, //zmenšení odsazení
+  // 1. Speciální tokeny
+  TOKEN_EOF,    // konec souboru
+  TOKEN_EOL,    // konec řádku
+  TOKEN_INDENT, // zvětšení odsazení
+  TOKEN_DEDENT, // zmenšení odsazení
 
-    //2. Literály a identifikátory
-    TOKEN_IDENTIFIER, //např. promenna_nazev
-    TOKEN_INT_LITERAL, //např. 86
-    TOKEN_DOUBLE_LITERAL, //např. 3.14
-    TOKEN_STRING_LITERAL, //např. "Jak se mas"
+  // 2. Literály a identifikátory
+  TOKEN_IDENTIFIER,     // např. promenna_nazev
+  TOKEN_INT_LITERAL,    // např. 86
+  TOKEN_DOUBLE_LITERAL, // např. 3.14
+  TOKEN_STRING_LITERAL, // např. "Jak se mas"
 
-    //3. Datové typy
-    TOKEN_KW_INT,
-    TOKEN_KW_DOUBLE,
-    TOKEN_KW_STRING,
-    TOKEN_KW_UNIT,
+  // 3. Datové typy
+  TOKEN_KW_INT,
+  TOKEN_KW_DOUBLE,
+  TOKEN_KW_STRING,
+  TOKEN_KW_UNIT,
 
-    //4. Klíčová slova
-    TOKEN_DEF,
-    TOKEN_DO,
-    TOKEN_IF,
-    TOKEN_ELSE,
-    TOKEN_THEN,
-    TOKEN_IMPORT,
-    TOKEN_RETURN,
-    TOKEN_VAL,
-    TOKEN_VAR,
-    TOKEN_WHILE,
+  // 4. Klíčová slova
+  TOKEN_DEF,
+  TOKEN_DO,
+  TOKEN_IF,
+  TOKEN_ELSE,
+  TOKEN_THEN,
+  TOKEN_IMPORT,
+  TOKEN_RETURN,
+  TOKEN_VAL,
+  TOKEN_VAR,
+  TOKEN_WHILE,
 
-    //4,5. Klíčová slova a datový typ (rozšíření)
-    TOKEN_TRUE, //BOOLTHEN
-    TOKEN_FALSE, //BOOLTHEN
-    TOKEN_KW_BOOLEAN,
+  // 4,5. Klíčová slova a datový typ (rozšíření)
+  TOKEN_TRUE,  // BOOLTHEN
+  TOKEN_FALSE, // BOOLTHEN
+  TOKEN_KW_BOOLEAN,
 
-    //5. Operátory a speciální znaky
-    TOKEN_PLUS, // +
-    TOKEN_MINUS, // -
-    TOKEN_MUL, // *
-    TOKEN_DIV, // /
-    TOKEN_ASSIGN, // =
-    TOKEN_EQ, // ==
-    TOKEN_NEQ, // !=
-    TOKEN_LESS, // <
-    TOKEN_LESS_EQ, // <=
-    TOKEN_GREATER, // >
-    TOKEN_GREATER_EQ, // >=
-    TOKEN_LPAREN, // (
-    TOKEN_RPAREN, // )
-    TOKEN_COLON, // :
-    TOKEN_COMMA, // ,
-    TOKEN_SEMICOLON,
-    TOKEN_DOT,
-    TOKEN_MAIN,
-    
-    //5,5. Operátory a speciální znaky (rozšíření)
-    TOKEN_AND, // && (BOOLTHEN)
-    TOKEN_OR, // || (BOOLTHEN)
-    TOKEN_NOT // ! (BOOLTHEN)
+  // 5. Operátory a speciální znaky
+  TOKEN_PLUS,       // +
+  TOKEN_MINUS,      // -
+  TOKEN_MUL,        // *
+  TOKEN_DIV,        // /
+  TOKEN_ASSIGN,     // =
+  TOKEN_EQ,         // ==
+  TOKEN_NEQ,        // !=
+  TOKEN_LESS,       // <
+  TOKEN_LESS_EQ,    // <=
+  TOKEN_GREATER,    // >
+  TOKEN_GREATER_EQ, // >=
+  TOKEN_LPAREN,     // (
+  TOKEN_RPAREN,     // )
+  TOKEN_COLON,      // :
+  TOKEN_COMMA,      // ,
+  TOKEN_SEMICOLON,
+  TOKEN_DOT,
+  TOKEN_MAIN,
 
+  // 5,5. Operátory a speciální znaky (rozšíření)
+  TOKEN_AND, // && (BOOLTHEN)
+  TOKEN_OR,  // || (BOOLTHEN)
+  TOKEN_NOT  // ! (BOOLTHEN)
 
 } TokenType;
 
+/*
+ * @brief Struktura reprezentující jeden token
+ */
 typedef struct {
-    TokenType type; //typ tokenu
-    int line; //řádek, na kterém se token nachází
+  TokenType type; // typ tokenu
+  int line;       // řádek, na kterém se token nachází
 
-    union {
-        long long i_val; //int
-        double d_val; //double
-        char* s_val; //string a identifikátor
-    } attribute;
+  union {
+    long long i_val; // int
+    double d_val;    // double
+    char *s_val;     // string a identifikátor
+  } attribute;
 } Token;
 
+/*
+ * @brief Hlavní vstupní bod scanneru. Obsluhuje unget zásobník, výpočet změn
+ * odsazení a ukončení bloků před EOF
+ */
 int get_next_token(Token *token);
+
+/*
+ * @brief Vrátí načtený token zpět do scanneru (LIFO zásobník)
+ */
 void scanner_unget(Token token);
+
+/*
+ * @brief Vynuluje interní stav scanneru a uvolní alokované tokeny (především
+ * pro testování)
+ */
 void scanner_reset(void);
-
-
-
-
-
-
 
 #endif

@@ -1,0 +1,8 @@
+.IFJcode26
+DEFVAR GF@i
+MOVE GF@i int@0
+LABEL $$loop
+DEFVAR GF@x
+ADD GF@i GF@i int@1
+JUMPIFNEQ $$loop GF@i int@2
+WRITE string@ok

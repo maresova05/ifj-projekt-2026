@@ -1,0 +1,12 @@
+.IFJcode26
+DEFVAR GF@$expr_op1
+DEFVAR GF@$expr_op2
+CREATEFRAME
+CALL run
+EXIT int@0
+LABEL run
+
+PUSHFRAME
+WRITE string@a
+POPFRAME
+RETURN
